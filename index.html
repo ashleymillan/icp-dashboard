@@ -1,0 +1,3423 @@
+<!DOCTYPE html>
+<!--
+  ICP — Ideal Customer Profile Dashboard
+  ─────────────────────────────────────────
+  A two-axis B2B account scoring dashboard.
+
+    Fit Score   (A · B · C · D)        — concrete firmographic / financial / technographic data
+    Intent Score (Hot · Warm · Cold)   — live intent signals (6sense, hiring, funding, tech changes)
+
+  Built as a single self-contained HTML file. No build step, no backend, no install —
+  every dependency loads from CDN.
+
+  Stack:      Vanilla JS · D3 v7 · GSAP + ScrollTrigger · Lenis · Google Fonts (Quicksand)
+  Data:       175 simulated accounts, deterministic seed (mulberry32, seed 1337)
+  Modeled:    ZoomInfo · HG Insights · 6sense · D&B Hoovers enrichment
+
+  Open index.html in any modern browser to run.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ICP — Ideal Customer Profile</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@300..700&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #0e0c1c;
+      --surface: rgba(255, 255, 255, 0.04);
+      --surface-strong: rgba(255, 255, 255, 0.07);
+      --border: rgba(255, 255, 255, 0.08);
+      --border-strong: rgba(255, 255, 255, 0.14);
+      --text: #f0eaff;
+      --text-muted: #9b94b1;
+      --text-dim: #756e8c;
+      --accent: #d450e6;
+      --accent-2: #6e50e6;
+      --accent-3: #50e6e1;
+      --accent-4: #e65082;
+      --tier-a: #d450e6;
+      --tier-b: #6e50e6;
+      --tier-c: #50e6e1;
+      --tier-d: #e65082;
+      --intent-hot:  #ff4757;
+      --intent-warm: #ffa502;
+      --intent-cold: #54a0ff;
+      --shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.25);
+      --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.45);
+      --glow: 0 0 0 1px rgba(212, 80, 230, 0.45), 0 10px 28px rgba(212, 80, 230, 0.18);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    html.lenis, html.lenis body { height: auto; }
+    .lenis.lenis-smooth { scroll-behavior: auto !important; }
+    .lenis.lenis-smooth [data-lenis-prevent] { overscroll-behavior: contain; }
+    .lenis.lenis-stopped { overflow: hidden; }
+    .lenis.lenis-smooth iframe { pointer-events: none; }
+
+    body {
+      font-family: 'Quicksand', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(ellipse at 15% -10%, rgba(212, 80, 230, 0.20), transparent 55%),
+        radial-gradient(ellipse at 90% 110%, rgba(110, 80, 230, 0.16), transparent 55%),
+        radial-gradient(ellipse at 80% 30%, rgba(80, 230, 225, 0.07), transparent 60%),
+        var(--bg);
+      background-attachment: fixed;
+      min-height: 100vh;
+      font-size: 14px;
+      font-weight: 400;
+      line-height: 1.5;
+      overflow-x: hidden;
+    }
+
+    /* ─── Topbar ─── */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 32px;
+      background: rgba(14, 12, 28, 0.55);
+      border-bottom: 1px solid var(--border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      gap: 24px;
+    }
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .logo-dot {
+      width: 40px; height: 40px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2) 60%, var(--accent-3));
+      box-shadow: 0 4px 22px rgba(212, 80, 230, 0.5);
+      position: relative;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .logo-dot::after {
+      content: '';
+      position: absolute;
+      inset: -50%;
+      background: conic-gradient(from 0deg, transparent, rgba(255,255,255,0.35), transparent 30%);
+      animation: spin 6s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .topbar h1 {
+      margin: 0;
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      background: linear-gradient(120deg, #fff 0%, #f0eaff 30%, var(--accent) 80%, var(--accent-3) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .data-sources {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .source-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 11px;
+      border-radius: 999px;
+      font-size: 11px;
+      letter-spacing: 0.04em;
+      color: var(--text-muted);
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .source-chip .dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .pulse {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--accent-3);
+      box-shadow: 0 0 0 0 rgba(80, 230, 225, 0.7);
+      animation: pulse 1.8s ease-out infinite;
+    }
+    @keyframes pulse {
+      0%   { box-shadow: 0 0 0 0 rgba(80, 230, 225, 0.55); }
+      80%  { box-shadow: 0 0 0 10px rgba(80, 230, 225, 0); }
+      100% { box-shadow: 0 0 0 0 rgba(80, 230, 225, 0); }
+    }
+
+    /* ─── KPI strip (5 tiles) ─── */
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 16px;
+      padding: 28px 32px 0;
+    }
+    .kpi, .card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      overflow: hidden;
+      transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+    }
+    .kpi { padding: 20px 22px; }
+    .kpi::before, .card::before {
+      content: '';
+      position: absolute;
+      inset: -1px;
+      background: radial-gradient(circle 240px at var(--mx, -100px) var(--my, -100px),
+        rgba(212, 80, 230, 0.22),
+        transparent 65%);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+      pointer-events: none;
+      border-radius: inherit;
+    }
+    .kpi:hover, .card:hover {
+      border-color: rgba(212, 80, 230, 0.38);
+      box-shadow: var(--glow);
+      transform: translateY(-2px);
+    }
+    .kpi:hover::before, .card:hover::before { opacity: 1; }
+
+    .kpi-label {
+      color: var(--text-muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .kpi-value {
+      font-size: 32px;
+      font-weight: 700;
+      margin-top: 8px;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .kpi-sub {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin-top: 4px;
+    }
+    .kpi-tier-a::after,
+    .kpi-hot::after,
+    .kpi-prime::after {
+      content: '';
+      position: absolute; left: 0; top: 0; bottom: 0;
+      width: 3px;
+    }
+    .kpi-tier-a::after { background: var(--accent); box-shadow: 0 0 18px rgba(212, 80, 230, 0.65); }
+    .kpi-hot::after    { background: var(--intent-hot); box-shadow: 0 0 18px rgba(255, 71, 87, 0.65); }
+    .kpi-prime::after  {
+      background: linear-gradient(180deg, var(--accent), var(--intent-hot));
+      box-shadow: 0 0 22px rgba(255, 71, 87, 0.55);
+    }
+
+    /* ─── Info icon ─── */
+    .info-i {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 14px; height: 14px;
+      border-radius: 50%;
+      background: var(--surface-strong);
+      border: 1px solid var(--border-strong);
+      color: var(--text-muted);
+      font-size: 9px;
+      font-weight: 700;
+      cursor: help;
+      position: relative;
+      transition: color 0.18s, border-color 0.18s;
+    }
+    .info-i:hover { color: var(--text); border-color: rgba(212,80,230,0.6); }
+    .info-i::after {
+      content: 'i';
+      font-style: italic;
+      font-family: Georgia, serif;
+    }
+    .info-popover {
+      position: fixed;
+      max-width: 280px;
+      padding: 12px 14px;
+      background: rgba(14, 12, 28, 0.96);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(8px);
+      font-size: 12px;
+      line-height: 1.55;
+      color: var(--text);
+      opacity: 0;
+      transform: translateY(4px);
+      pointer-events: none;
+      transition: opacity 0.18s, transform 0.18s;
+      z-index: 1001;
+    }
+    .info-popover.show { opacity: 1; transform: translateY(0); }
+    .info-popover .title { font-weight: 600; margin-bottom: 4px; }
+    .info-popover .src   { color: var(--text-dim); font-size: 11px; margin-top: 6px; letter-spacing: 0.04em; }
+
+    /* ─── Charts ─── */
+    .charts {
+      display: grid;
+      grid-template-columns: 1.05fr 0.95fr;
+      gap: 18px;
+      padding: 22px 32px 0;
+    }
+    .card { padding: 20px 22px; }
+    .card h3 {
+      margin: 0 0 18px;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .card h3 .chip {
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--text-muted);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .card h3 .title { display: flex; align-items: center; gap: 8px; }
+    .chart-wrap { position: relative; height: 320px; }
+    .chart-wide { grid-column: 1 / -1; }
+    .chart-wide .chart-wrap { height: 380px; }
+
+    /* ─── D3 styling ─── */
+    svg { display: block; width: 100%; height: 100%; overflow: visible; }
+    .donut-arc { cursor: pointer; transition: filter 0.2s ease; }
+    .donut-arc:hover { filter: brightness(1.15) drop-shadow(0 0 14px currentColor); }
+
+    .bar-track { fill: rgba(255,255,255,0.05); }
+    .bar { cursor: pointer; transition: filter 0.2s ease; }
+    .bar:hover { filter: brightness(1.2) drop-shadow(0 0 10px currentColor); }
+    .bar-label { font-size: 11px; fill: var(--text-muted); }
+    .bar-value { font-size: 11px; font-weight: 600; fill: var(--text); }
+    .axis text { fill: var(--text-muted); font-size: 11px; font-family: 'Quicksand', sans-serif; }
+    .axis line, .axis path { stroke: rgba(255,255,255,0.06); shape-rendering: crispEdges; }
+    .grid line { stroke: rgba(255,255,255,0.05); }
+    .grid path { stroke: none; }
+    .axis-title { font-size: 11px; fill: var(--text-dim); letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .dot { cursor: pointer; transition: r 0.2s ease, filter 0.2s ease; }
+    .dot:hover { filter: brightness(1.3) drop-shadow(0 0 14px currentColor); }
+
+    /* Matrix heatmap */
+    .matrix-cell { cursor: pointer; transition: filter 0.2s ease; }
+    .matrix-cell:hover { filter: brightness(1.3); }
+    .matrix-label { font-size: 11px; fill: var(--text-muted); font-family: 'Quicksand', sans-serif; }
+    .matrix-row-label { font-weight: 600; fill: var(--text); }
+    .matrix-cell-count { font-size: 14px; font-weight: 700; pointer-events: none; }
+    .matrix-cell-sub { font-size: 10px; pointer-events: none; }
+
+    /* Quadrant guide lines */
+    .quad-line { stroke: rgba(255,255,255,0.15); stroke-width: 1; stroke-dasharray: 3,3; }
+    .quad-label {
+      font-size: 10px;
+      fill: var(--text-dim);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    /* ─── Tooltip ─── */
+    .tooltip {
+      position: fixed;
+      pointer-events: none;
+      padding: 11px 14px;
+      background: rgba(14, 12, 28, 0.96);
+      border: 1px solid var(--border-strong);
+      border-radius: 10px;
+      box-shadow: var(--shadow-lg);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      font-size: 12px;
+      color: var(--text);
+      opacity: 0;
+      transform: translateY(4px);
+      transition: opacity 0.18s, transform 0.18s;
+      z-index: 1000;
+      max-width: 260px;
+      line-height: 1.55;
+    }
+    .tooltip.show { opacity: 1; transform: translateY(0); }
+    .tooltip .t-company { font-weight: 600; margin-bottom: 4px; color: var(--text); }
+    .tooltip .t-row { color: var(--text-muted); }
+    .tooltip .t-row strong { color: var(--text); }
+
+    /* ─── Table ─── */
+    .table-card {
+      margin: 22px 32px 28px;
+      padding: 0;
+      overflow: hidden;
+    }
+    .table-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 22px;
+      border-bottom: 1px solid var(--border);
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .table-toolbar h3 { margin: 0; }
+    .table-filters { display: flex; gap: 10px; flex-wrap: wrap; }
+    .table-filters input, .table-filters select {
+      padding: 8px 12px;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      font-size: 13px;
+      font-family: inherit;
+      background: var(--surface-strong);
+      color: var(--text);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .table-filters input::placeholder { color: var(--text-muted); }
+    .table-filters input:focus, .table-filters select:focus {
+      outline: none;
+      border-color: rgba(212, 80, 230, 0.6);
+      box-shadow: 0 0 0 3px rgba(212, 80, 230, 0.18);
+    }
+    .table-filters input { width: 260px; }
+
+    .table-scroll {
+      max-height: 580px;
+      overflow: auto;
+    }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      position: sticky; top: 0;
+      background: rgba(14, 12, 28, 0.85);
+      backdrop-filter: blur(8px);
+      text-align: left;
+      padding: 12px 16px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      border-bottom: 1px solid var(--border-strong);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      transition: color 0.18s ease;
+    }
+    thead th:hover { color: var(--text); }
+    thead th.sorted-asc::after  { content: ' ↑'; color: var(--accent); }
+    thead th.sorted-desc::after { content: ' ↓'; color: var(--accent); }
+    tbody td {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    tbody tr {
+      transition: background 0.18s ease;
+      cursor: pointer;
+    }
+    tbody tr:hover { background: rgba(212, 80, 230, 0.07); }
+    .tier-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #0e0c1c;
+      letter-spacing: 0.05em;
+    }
+    .tier-A { background: var(--tier-a); }
+    .tier-B { background: var(--tier-b); }
+    .tier-C { background: var(--tier-c); }
+    .tier-D { background: var(--tier-d); color: #fff; }
+
+    .intent-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px 3px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border: 1px solid;
+    }
+    .intent-chip .heat-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+    }
+    .intent-Hot  { border-color: rgba(255, 71, 87, 0.45);  background: rgba(255, 71, 87, 0.12);  color: #ff7e8b; }
+    .intent-Hot  .heat-dot { background: var(--intent-hot); box-shadow: 0 0 8px var(--intent-hot); }
+    .intent-Warm { border-color: rgba(255, 165, 2, 0.45);  background: rgba(255, 165, 2, 0.12);  color: #ffbe55; }
+    .intent-Warm .heat-dot { background: var(--intent-warm); box-shadow: 0 0 8px var(--intent-warm); }
+    .intent-Cold { border-color: rgba(84, 160, 255, 0.45); background: rgba(84, 160, 255, 0.12); color: #87b8ff; }
+    .intent-Cold .heat-dot { background: var(--intent-cold); box-shadow: 0 0 8px var(--intent-cold); }
+
+    .score-cell { font-weight: 600; white-space: nowrap; }
+    .score-bar {
+      display: inline-block;
+      width: 56px;
+      height: 4px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.06);
+      vertical-align: middle;
+      margin-right: 8px;
+      overflow: hidden;
+      position: relative;
+    }
+    .score-bar i {
+      display: block;
+      height: 100%;
+      border-radius: 4px;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
+    }
+    .score-bar.intent i {
+      background: linear-gradient(90deg, var(--intent-cold), var(--intent-warm), var(--intent-hot));
+    }
+
+    /* ─── Methodology ─── */
+    .methodology {
+      margin: 22px 32px 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(12px);
+      overflow: hidden;
+    }
+    .methodology-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 18px 24px;
+      cursor: pointer;
+      user-select: none;
+      border-bottom: 1px solid transparent;
+      transition: background 0.18s, border-color 0.18s;
+    }
+    .methodology-header:hover { background: rgba(255,255,255,0.02); }
+    .methodology.open .methodology-header { border-bottom-color: var(--border); }
+    .methodology-header h3 {
+      margin: 0;
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .methodology-header h3::before {
+      content: '';
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 0 0 10px var(--accent);
+    }
+    .chevron {
+      width: 22px; height: 22px;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.3s ease;
+      color: var(--text-muted);
+    }
+    .methodology.open .chevron { transform: rotate(180deg); color: var(--text); }
+    .methodology-body {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.45s ease;
+    }
+    .methodology.open .methodology-body { max-height: 3000px; }
+    .methodology-inner {
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 28px;
+    }
+    .methodology-inner[hidden] { display: none; }
+    .meth-block h4 {
+      margin: 0 0 12px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .meth-block h4 .pill {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(212, 80, 230, 0.12);
+      border: 1px solid rgba(212, 80, 230, 0.3);
+      color: var(--accent);
+      letter-spacing: 0.05em;
+      text-transform: none;
+    }
+    .meth-block table { font-size: 12.5px; }
+    .meth-block thead th {
+      background: transparent;
+      position: static;
+      padding: 8px 10px;
+      font-size: 10px;
+      backdrop-filter: none;
+      cursor: default;
+    }
+    .meth-block tbody td {
+      padding: 9px 10px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      font-size: 12.5px;
+    }
+    .meth-block .pts-col { text-align: right; font-variant-numeric: tabular-nums; color: var(--accent); font-weight: 600; }
+    .meth-block .src-col { color: var(--text-muted); font-size: 11px; }
+    .meth-thresholds {
+      margin-top: 14px;
+      padding: 12px 14px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .meth-thresholds strong { color: var(--text); font-weight: 600; }
+
+    .meth-sources {
+      grid-column: 1 / -1;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+    }
+    .meth-sources h4 {
+      margin: 0 0 14px;
+      font-size: 13px;
+      font-weight: 600;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .source-map {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .source-tile {
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.025);
+    }
+    .source-tile h5 {
+      margin: 0 0 6px;
+      font-size: 13px;
+      font-weight: 600;
+      display: flex; align-items: center; gap: 8px;
+      color: var(--text);
+    }
+    .source-tile h5 .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .source-tile p {
+      margin: 0;
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    /* ─── Drawer ─── */
+    .drawer-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 6, 18, 0.55);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.3s ease;
+      z-index: 100;
+    }
+    .drawer-backdrop.open { opacity: 1; pointer-events: auto; }
+    .drawer {
+      position: fixed;
+      top: 0;
+      right: 0;
+      height: 100vh;
+      width: min(540px, 100vw);
+      background: linear-gradient(180deg, #15122a, #0e0c1c);
+      border-left: 1px solid var(--border-strong);
+      box-shadow: -20px 0 60px rgba(0,0,0,0.6);
+      transform: translateX(105%);
+      transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+      z-index: 101;
+      display: flex;
+      flex-direction: column;
+    }
+    .drawer.open { transform: translateX(0); }
+    .drawer-header {
+      padding: 22px 26px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .drawer-header h2 {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .drawer-subline {
+      margin: 4px 0 12px;
+      color: var(--text-muted);
+      font-size: 12px;
+    }
+    .drawer-badges {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .drawer-close {
+      width: 32px; height: 32px;
+      border-radius: 8px;
+      border: 1px solid var(--border);
+      background: var(--surface-strong);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      transition: border-color 0.18s, color 0.18s;
+    }
+    .drawer-close:hover { border-color: rgba(212,80,230,0.5); color: var(--accent); }
+    .drawer-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 22px 26px 32px;
+    }
+    .drawer-section {
+      margin-bottom: 26px;
+    }
+    .drawer-section:last-child { margin-bottom: 0; }
+    .drawer-section h4 {
+      margin: 0 0 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .firmo-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      font-size: 13px;
+    }
+    .firmo-row .lbl { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; }
+    .firmo-row .val { color: var(--text); font-weight: 500; font-variant-numeric: tabular-nums; }
+    .firmo-row .delta {
+      font-size: 11px;
+      font-weight: 600;
+      margin-left: 6px;
+    }
+    .delta.up   { color: #6dffb0; }
+    .delta.down { color: #ff7e8b; }
+    .delta.flat { color: var(--text-muted); }
+
+    .breakdown-row {
+      display: grid;
+      grid-template-columns: 1fr auto 100px;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 0;
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+      font-size: 13px;
+    }
+    .breakdown-row:last-child { border-bottom: none; }
+    .breakdown-row .dim {
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .breakdown-row .pts {
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-weight: 600;
+      font-size: 12.5px;
+    }
+    .breakdown-row .pts .max { color: var(--text-dim); font-weight: 500; }
+    .breakdown-row .bar {
+      height: 6px;
+      border-radius: 4px;
+      background: rgba(255,255,255,0.05);
+      overflow: hidden;
+      position: relative;
+    }
+    .breakdown-row .bar i {
+      display: block;
+      height: 100%;
+      border-radius: 4px;
+    }
+    .breakdown-row.fit .bar i { background: linear-gradient(90deg, var(--accent-2), var(--accent)); }
+    .breakdown-row.intent .bar i { background: linear-gradient(90deg, var(--intent-cold), var(--intent-warm), var(--intent-hot)); }
+
+    .keyword-chips {
+      display: flex; flex-wrap: wrap; gap: 6px;
+    }
+    .kw-chip {
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(255, 71, 87, 0.10);
+      border: 1px solid rgba(255, 71, 87, 0.30);
+      color: #ffafbb;
+    }
+    .tech-chip {
+      padding: 4px 11px;
+      border-radius: 999px;
+      font-size: 12px;
+      background: rgba(110, 80, 230, 0.12);
+      border: 1px solid rgba(110, 80, 230, 0.32);
+      color: #b9a8ff;
+      margin-right: 6px;
+      margin-bottom: 6px;
+      display: inline-block;
+    }
+    .tech-chip.match {
+      background: rgba(212, 80, 230, 0.16);
+      border-color: rgba(212, 80, 230, 0.45);
+      color: #f1b6f9;
+    }
+    .change-item {
+      font-size: 12px;
+      color: var(--text-muted);
+      padding: 4px 0;
+    }
+    .change-item strong { color: var(--text); font-weight: 600; }
+
+    .spark-row {
+      display: flex; align-items: center; gap: 14px;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+    .spark-row .label { color: var(--text-muted); min-width: 90px; }
+    .spark-row .yoy { margin-left: auto; font-weight: 600; }
+    .spark-row svg { width: 130px; height: 32px; }
+
+    /* ─── Loader ─── */
+    .loader {
+      position: fixed;
+      inset: 0;
+      background: var(--bg);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      z-index: 200;
+      color: var(--text-muted);
+      transition: opacity 0.6s ease;
+    }
+    .loader.hidden { opacity: 0; pointer-events: none; }
+    .spinner {
+      width: 26px; height: 26px;
+      border: 2.5px solid rgba(255,255,255,0.10);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.85s linear infinite;
+    }
+
+    ::-webkit-scrollbar { width: 10px; height: 10px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 10px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(212,80,230,0.35); }
+
+    /* ─── Clickable affordance + back button + drawer list components ─── */
+    .kpi { cursor: pointer; }
+    .kpi-chev {
+      position: absolute;
+      top: 18px; right: 18px;
+      color: var(--text-dim);
+      font-size: 16px;
+      transition: transform 0.2s ease, color 0.2s ease;
+      pointer-events: none;
+      line-height: 1;
+    }
+    .kpi:hover .kpi-chev { color: var(--accent); transform: translateX(3px); }
+
+    .drawer-back {
+      display: none;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 11px 4px 8px;
+      border-radius: 8px;
+      background: var(--surface-strong);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      font-size: 12px;
+      font-family: inherit;
+      font-weight: 500;
+      cursor: pointer;
+      margin-bottom: 12px;
+      transition: color 0.18s, border-color 0.18s;
+    }
+    .drawer-back.show { display: inline-flex; }
+    .drawer-back:hover { color: var(--accent); border-color: rgba(212,80,230,0.5); }
+
+    .acct-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      align-items: center;
+      gap: 12px;
+      padding: 11px 14px;
+      margin-bottom: 6px;
+      background: rgba(255,255,255,0.025);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      cursor: pointer;
+      transition: border-color 0.18s, background 0.18s, transform 0.15s;
+    }
+    .acct-row:hover {
+      background: rgba(212,80,230,0.07);
+      border-color: rgba(212,80,230,0.4);
+      transform: translateX(2px);
+    }
+    .acct-row .co { font-weight: 600; color: var(--text); font-size: 13px; }
+    .acct-row .meta { font-size: 11.5px; color: var(--text-muted); margin-top: 3px; }
+    .acct-row .scores {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 5px;
+    }
+    .acct-row .badge-pair { display: flex; gap: 5px; }
+    .acct-row .scores .s {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .acct-row .scores .s strong { color: var(--text); font-weight: 600; }
+    .tier-mini {
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #0e0c1c;
+    }
+    .tier-mini.tier-A { background: var(--tier-a); }
+    .tier-mini.tier-B { background: var(--tier-b); }
+    .tier-mini.tier-C { background: var(--tier-c); }
+    .tier-mini.tier-D { background: var(--tier-d); color: #fff; }
+    .intent-mini {
+      padding: 2px 8px 2px 6px;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      border: 1px solid;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .intent-mini .heat-dot {
+      width: 5px; height: 5px; border-radius: 50%;
+    }
+    .intent-mini.intent-Hot  { border-color: rgba(255, 71, 87, 0.45);  background: rgba(255, 71, 87, 0.12);  color: #ff7e8b; }
+    .intent-mini.intent-Hot  .heat-dot { background: var(--intent-hot); }
+    .intent-mini.intent-Warm { border-color: rgba(255, 165, 2, 0.45);  background: rgba(255, 165, 2, 0.12);  color: #ffbe55; }
+    .intent-mini.intent-Warm .heat-dot { background: var(--intent-warm); }
+    .intent-mini.intent-Cold { border-color: rgba(84, 160, 255, 0.45); background: rgba(84, 160, 255, 0.12); color: #87b8ff; }
+    .intent-mini.intent-Cold .heat-dot { background: var(--intent-cold); }
+
+    /* Distribution rows inside drawer */
+    .dist-list { display: flex; flex-direction: column; gap: 7px; }
+    .dist-row {
+      display: grid;
+      grid-template-columns: 140px 1fr 44px;
+      align-items: center;
+      gap: 12px;
+      font-size: 12.5px;
+    }
+    .dist-row .lbl {
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .dist-row .bar {
+      height: 8px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .dist-row .bar i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      border-radius: 4px;
+    }
+    .dist-row .cnt {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+      font-weight: 600;
+    }
+    .dist-row[data-filter-field] {
+      cursor: pointer;
+      padding: 5px 8px;
+      margin: -5px -8px;
+      border-radius: 7px;
+      border: 1px solid transparent;
+      transition: background 0.15s, border-color 0.15s, transform 0.15s;
+    }
+    .dist-row[data-filter-field]:hover {
+      background: rgba(212, 80, 230, 0.08);
+      border-color: rgba(212, 80, 230, 0.32);
+      transform: translateX(3px);
+    }
+    .dist-row[data-filter-field]:hover .lbl,
+    .dist-row[data-filter-field]:hover .cnt { color: var(--accent); }
+
+    /* Recommendation pill (matrix cell drawer) */
+    .rec-pill {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 11px;
+      background: rgba(212, 80, 230, 0.10);
+      border: 1px solid rgba(212, 80, 230, 0.32);
+      color: var(--text);
+      font-size: 12.5px;
+      line-height: 1.5;
+    }
+    .rec-pill .rec-emoji { font-size: 18px; flex-shrink: 0; }
+
+    /* Dimension averages (in drawer) */
+    .dim-avg-row {
+      display: grid;
+      grid-template-columns: 1fr 90px 80px;
+      align-items: center;
+      gap: 14px;
+      padding: 8px 0;
+      font-size: 12.5px;
+      border-bottom: 1px dashed rgba(255,255,255,0.05);
+    }
+    .dim-avg-row:last-child { border-bottom: none; }
+    .dim-avg-row .lbl { color: var(--text); }
+    .dim-avg-row .bar {
+      height: 5px;
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .dim-avg-row .bar i {
+      display: block;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent-2), var(--accent));
+      border-radius: 4px;
+    }
+    .dim-avg-row .v {
+      text-align: right;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+      font-size: 11.5px;
+    }
+    .dim-avg-row .v strong { color: var(--text); }
+
+    /* D3: matrix cell + industry bar click affordance */
+    .matrix-cell, .bar { cursor: pointer; }
+
+    /* ─── Methodology tabs + annotated example drawer ─── */
+    .meth-tabs {
+      display: flex;
+      gap: 2px;
+      padding: 14px 24px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .meth-tab {
+      padding: 10px 18px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0.2px;
+      cursor: pointer;
+      border-radius: 8px 8px 0 0;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      transition: color 0.18s, border-color 0.18s, background 0.18s;
+    }
+    .meth-tab:hover { color: var(--text); background: rgba(255,255,255,0.02); }
+    .meth-tab.active {
+      color: var(--accent);
+      border-bottom-color: var(--accent);
+      background: rgba(212, 80, 230, 0.05);
+    }
+    .meth-tab-panel { padding: 24px; }
+    .meth-tab-panel[hidden] { display: none; }
+
+    .annotated-drawer {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 28px;
+      align-items: start;
+    }
+    .annotated-intro {
+      grid-column: 1 / -1;
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+      margin: 0 0 8px;
+      max-width: 760px;
+    }
+    .annotated-intro strong { color: var(--text); font-weight: 600; }
+
+    .ann-mock {
+      background: linear-gradient(180deg, #15122a, #0e0c1c);
+      border: 1px solid var(--border-strong);
+      border-radius: 16px;
+      padding: 24px 26px 28px 60px;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      font-size: 12.5px;
+    }
+    .ann-mock::before {
+      content: '';
+      position: absolute;
+      top: 0; bottom: 0; left: 0;
+      width: 36px;
+      background: linear-gradient(180deg, rgba(212, 80, 230, 0.08), transparent 60%);
+      border-right: 1px dashed rgba(212, 80, 230, 0.2);
+      border-radius: 16px 0 0 16px;
+    }
+    .ann-mock-section {
+      position: relative;
+      margin-bottom: 22px;
+    }
+    .ann-mock-section:last-child { margin-bottom: 0; }
+    .ann-mock-section h5 {
+      margin: 0 0 10px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+    }
+    .ann-mock h3.ann-mock-company {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .ann-mock-subline {
+      color: var(--text-muted);
+      font-size: 12px;
+      margin: 3px 0 10px;
+    }
+    .ann-mock-badges {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .ann-marker {
+      position: absolute;
+      left: -48px;
+      top: 0;
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff;
+      font-weight: 700;
+      font-size: 12.5px;
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 0 4px rgba(212, 80, 230, 0.16), 0 4px 12px rgba(212, 80, 230, 0.45);
+      z-index: 2;
+    }
+    .ann-mock-mini-spark {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 6px 0;
+      font-size: 12px;
+    }
+    .ann-mock-mini-spark .ms-label { color: var(--text-muted); min-width: 90px; }
+    .ann-mock-mini-spark svg { width: 120px; height: 28px; }
+    .ann-mock-mini-spark .ms-yoy { font-weight: 600; margin-left: auto; font-size: 11px; }
+
+    .ann-list {
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+    .ann-item {
+      display: grid;
+      grid-template-columns: 30px 1fr;
+      gap: 14px;
+      align-items: start;
+    }
+    .ann-num {
+      width: 26px; height: 26px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--accent), var(--accent-2));
+      color: #fff;
+      font-weight: 700;
+      font-size: 12.5px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      box-shadow: 0 0 0 4px rgba(212, 80, 230, 0.10), 0 3px 8px rgba(212, 80, 230, 0.3);
+    }
+    .ann-item h5 {
+      margin: 0 0 4px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+    }
+    .ann-item p {
+      margin: 0;
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+    .ann-src {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(212, 80, 230, 0.10);
+      border: 1px solid rgba(212, 80, 230, 0.28);
+      color: var(--accent);
+      font-size: 10.5px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    .ann-src .src-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); }
+
+    @media (max-width: 1100px) {
+      .annotated-drawer { grid-template-columns: 1fr; }
+      .ann-mock { padding-left: 56px; }
+    }
+
+    @media (max-width: 1100px) {
+      .kpis { grid-template-columns: repeat(2, 1fr); }
+      .charts { grid-template-columns: 1fr; }
+      .methodology-inner { grid-template-columns: 1fr; }
+      .topbar { padding: 16px 18px; flex-wrap: wrap; gap: 12px; }
+      .data-sources { order: 3; flex-basis: 100%; }
+      .kpis, .charts, .table-card, .methodology { margin-left: 18px; margin-right: 18px; padding-left: 0; padding-right: 0; }
+      .table-filters input { width: 180px; }
+      .firmo-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="loader" id="loader">
+    <div class="spinner"></div>
+    <span>Loading dashboard…</span>
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo-dot"></span>
+      <div>
+        <h1>ICP — Ideal Customer Profile</h1>
+      </div>
+    </div>
+    <div class="data-sources">
+      <span class="source-chip"><span class="pulse"></span><span>Live</span></span>
+      <span class="source-chip"><span class="dot" style="background:#6e50e6"></span>ZoomInfo</span>
+      <span class="source-chip"><span class="dot" style="background:#50e6e1"></span>HG Insights</span>
+      <span class="source-chip"><span class="dot" style="background:#ff4757"></span>6sense</span>
+      <span class="source-chip"><span class="dot" style="background:#ffa502"></span>D&amp;B Hoovers</span>
+    </div>
+  </header>
+
+  <section class="methodology" id="methodology">
+    <div class="methodology-header" id="methodologyToggle">
+      <h3>Scoring methodology</h3>
+      <span class="chevron">▾</span>
+    </div>
+    <div class="methodology-body">
+      <div class="meth-tabs">
+        <button class="meth-tab active" data-tab="rubric" type="button">Scoring rubric</button>
+        <button class="meth-tab" data-tab="reading" type="button">Reading an account</button>
+      </div>
+      <div class="methodology-inner" data-panel="rubric">
+        <!-- Fit rubric -->
+        <div class="meth-block">
+          <h4>Fit Score <span class="pill">A · B · C · D · 100 pts</span></h4>
+          <p style="margin:0 0 12px;color:var(--text-muted);font-size:12.5px;">
+            Concrete, durable data only. A snapshot of whether an account <em>matches</em> our ideal customer profile based on firmographics, financial health, technographics, and structural fit. Stable across time.
+          </p>
+          <table>
+            <thead><tr><th>Dimension</th><th class="src-col">Source</th><th class="pts-col">Max</th></tr></thead>
+            <tbody>
+              <tr><td>Industry match (target / adjacent / non-target)</td><td class="src-col">ZoomInfo · D&amp;B</td><td class="pts-col">12</td></tr>
+              <tr><td>Revenue band fit (sweet spot $1B–$5B)</td><td class="src-col">D&amp;B Hoovers</td><td class="pts-col">12</td></tr>
+              <tr><td>Employee size fit (sweet spot 1k–10k)</td><td class="src-col">ZoomInfo</td><td class="pts-col">10</td></tr>
+              <tr><td>Financial health (credit + risk + stress)</td><td class="src-col">D&amp;B Hoovers</td><td class="pts-col">12</td></tr>
+              <tr><td>Technographic overlap + spend tier</td><td class="src-col">HG Insights</td><td class="pts-col">16</td></tr>
+              <tr><td>Growth trajectory (employee + revenue YoY)</td><td class="src-col">ZoomInfo · D&amp;B</td><td class="pts-col">14</td></tr>
+              <tr><td>Geographic fit (HQ tier + multinational)</td><td class="src-col">D&amp;B · ZoomInfo</td><td class="pts-col">10</td></tr>
+              <tr><td>Org structure (ownership · locations · age)</td><td class="src-col">D&amp;B</td><td class="pts-col">8</td></tr>
+              <tr><td>Decision-maker depth (execs + recent hires)</td><td class="src-col">ZoomInfo</td><td class="pts-col">6</td></tr>
+            </tbody>
+          </table>
+          <div class="meth-thresholds">
+            Tier cutoffs · <strong>A</strong> ≥ 80 · <strong>B</strong> ≥ 65 · <strong>C</strong> ≥ 45 · <strong>D</strong> below 45.
+            Each dimension uses banded scoring (full / partial / minimal credit) — see drawer for per-account dimension scores.
+          </div>
+        </div>
+
+        <!-- Intent rubric -->
+        <div class="meth-block">
+          <h4>Intent Score <span class="pill" style="background:rgba(255,71,87,0.12);border-color:rgba(255,71,87,0.35);color:#ff7e8b;">Hot · Warm · Cold · 100 pts</span></h4>
+          <p style="margin:0 0 12px;color:var(--text-muted);font-size:12.5px;">
+            Intent signals only. A live measure of whether an account is <em>actively shopping</em> right now — research surge, buying-stage progression, hiring, leadership change, funding, and tech replacement windows.
+          </p>
+          <table>
+            <thead><tr><th>Signal</th><th class="src-col">Source</th><th class="pts-col">Max</th></tr></thead>
+            <tbody>
+              <tr><td>6sense intent surge (keyword research)</td><td class="src-col">6sense</td><td class="pts-col">30</td></tr>
+              <tr><td>Buying stage (Awareness → Purchase)</td><td class="src-col">6sense</td><td class="pts-col">20</td></tr>
+              <tr><td>Web + content engagement</td><td class="src-col">6sense · ZoomInfo</td><td class="pts-col">15</td></tr>
+              <tr><td>Hiring for relevant target-function roles</td><td class="src-col">ZoomInfo</td><td class="pts-col">10</td></tr>
+              <tr><td>Recent leadership changes (target fn)</td><td class="src-col">ZoomInfo</td><td class="pts-col">10</td></tr>
+              <tr><td>Funding event in last 12 months</td><td class="src-col">D&amp;B · ZoomInfo</td><td class="pts-col">10</td></tr>
+              <tr><td>Tech change-of-status (install/replace window)</td><td class="src-col">HG Insights</td><td class="pts-col">5</td></tr>
+            </tbody>
+          </table>
+          <div class="meth-thresholds">
+            Band cutoffs · <strong style="color:#ff7e8b;">Hot</strong> ≥ 70 · <strong style="color:#ffbe55;">Warm</strong> ≥ 40 · <strong style="color:#87b8ff;">Cold</strong> below 40.
+            Intent decays over time — reset whenever new signals land.
+          </div>
+        </div>
+
+        <!-- Source map -->
+        <div class="meth-sources">
+          <h4>Data sources → dimensions</h4>
+          <div class="source-map">
+            <div class="source-tile">
+              <h5><span class="dot" style="background:#6e50e6"></span>ZoomInfo</h5>
+              <p>Firmographics, employee counts &amp; YoY trend, target-function exec depth + recent leadership moves, hiring postings, intent + buying-stage signal.</p>
+            </div>
+            <div class="source-tile">
+              <h5><span class="dot" style="background:#50e6e1"></span>HG Insights</h5>
+              <p>Installed technology stack, tech-spend band, recent install / replacement events that open a competitive window.</p>
+            </div>
+            <div class="source-tile">
+              <h5><span class="dot" style="background:#ff4757"></span>6sense</h5>
+              <p>Keyword-level research surge score, buying-stage classification (Awareness → Purchase), and web + content engagement.</p>
+            </div>
+            <div class="source-tile">
+              <h5><span class="dot" style="background:#ffa502"></span>D&amp;B Hoovers</h5>
+              <p>D-U-N-S identity, revenue + revenue YoY, D&amp;B credit + risk rating + financial stress, ownership type, corporate hierarchy &amp; location count.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="meth-tab-panel" data-panel="reading" hidden>
+        <p class="annotated-intro">
+          Every account drawer surfaces the same eleven sections. Each pulls from a specific source system. Below is an exemplar account (<strong>Vertex Systems</strong> — Fit A, Hot intent) annotated so you can see what each section means and where the data comes from.
+        </p>
+
+        <div class="annotated-drawer">
+          <!-- LEFT: mock account drawer -->
+          <div class="ann-mock">
+
+            <div class="ann-mock-section" style="margin-bottom: 18px;">
+              <span class="ann-marker">1</span>
+              <h3 class="ann-mock-company">Vertex Systems</h3>
+              <div class="ann-mock-subline">Technology · Cloud Infrastructure · United States, CA</div>
+              <div class="ann-mock-badges">
+                <span class="tier-badge tier-A">Fit A · 91/100</span>
+                <span class="intent-chip intent-Hot"><span class="heat-dot"></span>Hot · 78/100</span>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">2</span>
+              <h5>Firmographic snapshot</h5>
+              <div class="firmo-grid">
+                <div class="firmo-row"><div class="lbl">Revenue</div><div class="val">$2.35B <span class="delta up">+14.2% YoY</span></div></div>
+                <div class="firmo-row"><div class="lbl">Employees</div><div class="val">4,200 <span class="delta up">+22.5% YoY</span></div></div>
+                <div class="firmo-row"><div class="lbl">Revenue band</div><div class="val">$1B–$5B</div></div>
+                <div class="firmo-row"><div class="lbl">Tech spend</div><div class="val">$10M–$50M</div></div>
+                <div class="firmo-row"><div class="lbl">Founded</div><div class="val">2007</div></div>
+                <div class="firmo-row"><div class="lbl">Ownership</div><div class="val">Public</div></div>
+                <div class="firmo-row"><div class="lbl">HQ</div><div class="val">United States, CA</div></div>
+                <div class="firmo-row"><div class="lbl">Locations</div><div class="val">18 · multinational</div></div>
+                <div class="firmo-row"><div class="lbl">D-U-N-S</div><div class="val">47-291-3856</div></div>
+                <div class="firmo-row"><div class="lbl">SIC code</div><div class="val">7372</div></div>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">3</span>
+              <h5>4-quarter growth trend</h5>
+              <div class="ann-mock-mini-spark">
+                <span class="ms-label">Employees</span>
+                <svg viewBox="0 0 120 28" preserveAspectRatio="none">
+                  <defs><linearGradient id="ann-grad-emp" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#6e50e6" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#6e50e6" stop-opacity="0"/>
+                  </linearGradient></defs>
+                  <path d="M2,22 C25,18 50,14 75,9 S100,4 118,2 L118,26 L2,26 Z" fill="url(#ann-grad-emp)"/>
+                  <path d="M2,22 C25,18 50,14 75,9 S100,4 118,2" fill="none" stroke="#6e50e6" stroke-width="1.6" stroke-linecap="round"/>
+                  <circle cx="118" cy="2" r="2.4" fill="#6e50e6"/>
+                </svg>
+                <span class="ms-yoy" style="color:#6dffb0;">+22.5%</span>
+              </div>
+              <div class="ann-mock-mini-spark">
+                <span class="ms-label">Revenue (Q)</span>
+                <svg viewBox="0 0 120 28" preserveAspectRatio="none">
+                  <defs><linearGradient id="ann-grad-rev" x1="0" x2="0" y1="0" y2="1">
+                    <stop offset="0%" stop-color="#d450e6" stop-opacity="0.35"/>
+                    <stop offset="100%" stop-color="#d450e6" stop-opacity="0"/>
+                  </linearGradient></defs>
+                  <path d="M2,20 C25,17 50,13 75,9 S100,5 118,3 L118,26 L2,26 Z" fill="url(#ann-grad-rev)"/>
+                  <path d="M2,20 C25,17 50,13 75,9 S100,5 118,3" fill="none" stroke="#d450e6" stroke-width="1.6" stroke-linecap="round"/>
+                  <circle cx="118" cy="3" r="2.4" fill="#d450e6"/>
+                </svg>
+                <span class="ms-yoy" style="color:#6dffb0;">+14.2%</span>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">4</span>
+              <h5>Financial health · D&amp;B Hoovers</h5>
+              <div class="firmo-grid">
+                <div class="firmo-row"><div class="lbl">Credit score</div><div class="val">86 / 100</div></div>
+                <div class="firmo-row"><div class="lbl">Risk rating</div><div class="val">2 of 9 <span style="color:var(--text-dim);font-size:11px;">(1 = best)</span></div></div>
+                <div class="firmo-row"><div class="lbl">Financial stress</div><div class="val">None</div></div>
+                <div class="firmo-row"><div class="lbl">EBITDA margin</div><div class="val">22.4%</div></div>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">5</span>
+              <h5>Fit Score breakdown · 91/100 → Tier A</h5>
+              <div class="breakdown-row fit"><div class="dim">Industry match</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">12<span class="max"> / 12</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Revenue band</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">12<span class="max"> / 12</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Employee size</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">10<span class="max"> / 10</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Financial health</div><div class="bar"><i style="width:83%;"></i></div><div class="pts">10<span class="max"> / 12</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Technographic overlap</div><div class="bar"><i style="width:88%;"></i></div><div class="pts">14<span class="max"> / 16</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Growth trajectory</div><div class="bar"><i style="width:93%;"></i></div><div class="pts">13<span class="max"> / 14</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Geographic fit</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">10<span class="max"> / 10</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Org structure</div><div class="bar"><i style="width:75%;"></i></div><div class="pts">6<span class="max"> / 8</span></div></div>
+              <div class="breakdown-row fit"><div class="dim">Decision-maker depth</div><div class="bar"><i style="width:67%;"></i></div><div class="pts">4<span class="max"> / 6</span></div></div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">6</span>
+              <h5>Intent Score breakdown · 78/100 → Hot</h5>
+              <div class="breakdown-row intent"><div class="dim">6sense intent surge</div><div class="bar"><i style="width:80%;"></i></div><div class="pts">24<span class="max"> / 30</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Buying stage</div><div class="bar"><i style="width:85%;"></i></div><div class="pts">17<span class="max"> / 20</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Web + content engagement</div><div class="bar"><i style="width:80%;"></i></div><div class="pts">12<span class="max"> / 15</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Hiring (target roles)</div><div class="bar"><i style="width:70%;"></i></div><div class="pts">7<span class="max"> / 10</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Leadership changes</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">10<span class="max"> / 10</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Funding event (12mo)</div><div class="bar"><i style="width:0;"></i></div><div class="pts">0<span class="max"> / 10</span></div></div>
+              <div class="breakdown-row intent"><div class="dim">Tech change-of-status</div><div class="bar"><i style="width:100%;"></i></div><div class="pts">5<span class="max"> / 5</span></div></div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">7</span>
+              <div style="color:var(--text-muted);font-size:12px;line-height:1.6;">
+                Buying stage: <strong style="color:var(--text)">Decision</strong> ·
+                Funding: <span style="color:var(--text-dim)">No recent funding</span> ·
+                Hiring: <strong style="color:var(--text)">5</strong> postings ·
+                Leadership changes: <strong style="color:var(--text)">2</strong> in 90d
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">8</span>
+              <h5>Active intent keywords · 6sense</h5>
+              <div class="keyword-chips">
+                <span class="kw-chip">data warehouse migration</span>
+                <span class="kw-chip">cloud analytics</span>
+                <span class="kw-chip">lakehouse architecture</span>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">9</span>
+              <h5>Installed tech stack · HG Insights</h5>
+              <div>
+                <span class="tech-chip match">Salesforce</span>
+                <span class="tech-chip match">Snowflake</span>
+                <span class="tech-chip match">AWS</span>
+                <span class="tech-chip match">Okta</span>
+                <span class="tech-chip match">Tableau</span>
+                <span class="tech-chip">Segment</span>
+                <span class="tech-chip">DataDog</span>
+              </div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">10</span>
+              <h5>Recent tech changes · HG Insights</h5>
+              <div class="change-item">• <strong>Replacement</strong> · Tableau <span style="color:var(--text-dim)">— 3mo ago</span></div>
+              <div class="change-item">• <strong>New install</strong> · Marketo <span style="color:var(--text-dim)">— 7mo ago</span></div>
+            </div>
+
+            <div class="ann-mock-section">
+              <span class="ann-marker">11</span>
+              <h5>Decision-maker depth · ZoomInfo</h5>
+              <div class="firmo-grid">
+                <div class="firmo-row"><div class="lbl">Target-function execs</div><div class="val">8</div></div>
+                <div class="firmo-row"><div class="lbl">Recent exec hires (90d)</div><div class="val">2</div></div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- RIGHT: annotation list -->
+          <div class="ann-list">
+            <div class="ann-item">
+              <div class="ann-num">1</div>
+              <div>
+                <h5>Identity &amp; primary status</h5>
+                <p>Company name, sub-industry, headquarters — plus both scores at a glance as a Fit tier badge (A–D) and Intent chip (Hot/Warm/Cold). One row tells you "who they are" and "should I be calling them."</p>
+                <span class="ann-src"><span class="src-dot"></span>Composite · all sources</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">2</div>
+              <div>
+                <h5>Firmographic snapshot</h5>
+                <p>The slow-moving structural facts: revenue + employees with YoY deltas, founding year, ownership type, headquarters and physical footprint, D-U-N-S, SIC, and revenue/spend bands.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#ffa502"></span>D&amp;B Hoovers · ZoomInfo</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">3</div>
+              <div>
+                <h5>4-quarter growth sparklines</h5>
+                <p>Trailing 4-quarter trend lines for headcount and quarterly revenue. The YoY % on the right tells you whether the account is genuinely accelerating or just looks big on paper.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#6e50e6"></span>ZoomInfo · D&amp;B</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">4</div>
+              <div>
+                <h5>Financial health</h5>
+                <p>D&amp;B credit score (0–100, higher = stronger), risk rating (1 = lowest risk, 9 = highest), financial-stress flag, and EBITDA margin. Used both to score fit and to flag risk on otherwise good-looking targets.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#ffa502"></span>D&amp;B Hoovers</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">5</div>
+              <div>
+                <h5>Fit Score breakdown · 100 pts</h5>
+                <p>Nine dimensions, each scored against its point cap. The bar shows what fraction of the maximum the account earned. Anything well under cap is dragging the score down — worth understanding when defending the score to a manager.</p>
+                <span class="ann-src"><span class="src-dot"></span>Computed · A ≥ 80 · B ≥ 65 · C ≥ 45</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">6</div>
+              <div>
+                <h5>Intent Score breakdown · 100 pts</h5>
+                <p>Seven intent signals with point caps. 6sense surge + buying stage drive most of it; hiring, leadership changes, funding, and tech change-of-status round it out. Sums to the 0–100 Intent Score and the Hot/Warm/Cold band.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#ff4757"></span>6sense · ZoomInfo · D&amp;B · HG</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">7</div>
+              <div>
+                <h5>Triggers summary line</h5>
+                <p>The four discrete triggers behind the intent score, in one read: current buying stage, recent funding event, hiring volume for relevant roles, and leadership changes in the last 90 days.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#ff4757"></span>6sense · ZoomInfo</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">8</div>
+              <div>
+                <h5>Active intent keywords</h5>
+                <p>The specific search terms or research topics 6sense observed this account researching. Use these as outreach anchors — "we saw your team researching X, here's how we help with that."</p>
+                <span class="ann-src"><span class="src-dot" style="background:#ff4757"></span>6sense</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">9</div>
+              <div>
+                <h5>Installed tech stack</h5>
+                <p>Confirmed technologies installed at the account today. <strong>Highlighted pills are target-stack matches</strong> — more overlap = easier integration story. Drives the Technographic dimension on the Fit Score.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#50e6e1"></span>HG Insights</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">10</div>
+              <div>
+                <h5>Recent tech changes</h5>
+                <p>Installs, replacements, expansions, and pilots in the last ~12 months. A replacement window is a competitive opportunity; multiple changes signal active modernization budget.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#50e6e1"></span>HG Insights</span>
+              </div>
+            </div>
+            <div class="ann-item">
+              <div class="ann-num">11</div>
+              <div>
+                <h5>Decision-maker depth</h5>
+                <p>How many executives sit in the target buying functions, and how many were hired in the last 90 days. New hires often re-evaluate vendors — even a small uptick is worth noticing.</p>
+                <span class="ann-src"><span class="src-dot" style="background:#6e50e6"></span>ZoomInfo</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="kpis">
+    <div class="kpi" data-reveal data-kpi="total">
+      <span class="kpi-chev">›</span>
+      <div class="kpi-label">Total accounts <span class="info-i" data-info="kpi-total"></span></div>
+      <div class="kpi-value" id="kpiTotal" data-count="0">0</div>
+      <div class="kpi-sub">Across 15 industries</div>
+    </div>
+    <div class="kpi" data-reveal data-kpi="avg">
+      <span class="kpi-chev">›</span>
+      <div class="kpi-label">Avg fit score <span class="info-i" data-info="kpi-avg"></span></div>
+      <div class="kpi-value" id="kpiAvg" data-count="0">0</div>
+      <div class="kpi-sub">out of 100</div>
+    </div>
+    <div class="kpi kpi-tier-a" data-reveal data-kpi="atier">
+      <span class="kpi-chev">›</span>
+      <div class="kpi-label">A-tier accounts <span class="info-i" data-info="kpi-a"></span></div>
+      <div class="kpi-value" id="kpiA" data-count="0">0</div>
+      <div class="kpi-sub" id="kpiAPct">— of book</div>
+    </div>
+    <div class="kpi kpi-hot" data-reveal data-kpi="hot">
+      <span class="kpi-chev">›</span>
+      <div class="kpi-label">Hot intent <span class="info-i" data-info="kpi-hot"></span></div>
+      <div class="kpi-value" id="kpiHot" data-count="0">0</div>
+      <div class="kpi-sub" id="kpiHotPct">— of book</div>
+    </div>
+    <div class="kpi kpi-prime" data-reveal data-kpi="prime">
+      <span class="kpi-chev">›</span>
+      <div class="kpi-label">A + Hot <span class="info-i" data-info="kpi-prime"></span></div>
+      <div class="kpi-value" id="kpiPrime" data-count="0">0</div>
+      <div class="kpi-sub">Call-first segment</div>
+    </div>
+  </section>
+
+  <section class="charts">
+    <div class="card chart-card" data-reveal>
+      <h3>
+        <span class="title">Fit × Intent matrix <span class="info-i" data-info="chart-matrix"></span></span>
+        <span class="chip">accounts per cell</span>
+      </h3>
+      <div class="chart-wrap" id="chartMatrix"></div>
+    </div>
+    <div class="card chart-card" data-reveal>
+      <h3>
+        <span class="title">Avg fit score by industry <span class="info-i" data-info="chart-industry"></span></span>
+        <span class="chip">sorted desc</span>
+      </h3>
+      <div class="chart-wrap" id="chartIndustry"></div>
+    </div>
+    <div class="card chart-card chart-wide" data-reveal>
+      <h3>
+        <span class="title">Growth quadrant <span class="info-i" data-info="chart-quadrant"></span></span>
+        <span class="chip">employee growth × revenue growth · color = fit tier · size = revenue</span>
+      </h3>
+      <div class="chart-wrap" id="chartQuadrant"></div>
+    </div>
+  </section>
+
+  <section class="card table-card" data-reveal>
+    <div class="table-toolbar">
+      <h3>Account rankings <span class="info-i" data-info="table"></span></h3>
+      <div class="table-filters">
+        <input id="tableSearch" type="search" placeholder="Search company or industry…">
+        <select id="tierFilter">
+          <option value="">All fit tiers</option>
+          <option value="A">Fit A</option>
+          <option value="B">Fit B</option>
+          <option value="C">Fit C</option>
+          <option value="D">Fit D</option>
+        </select>
+        <select id="intentFilter">
+          <option value="">All intent</option>
+          <option value="Hot">Hot</option>
+          <option value="Warm">Warm</option>
+          <option value="Cold">Cold</option>
+        </select>
+      </div>
+    </div>
+    <div class="table-scroll" data-lenis-prevent>
+      <table id="accountsTable">
+        <thead>
+          <tr>
+            <th data-sort="rank">#</th>
+            <th data-sort="company">Company</th>
+            <th data-sort="industry">Industry</th>
+            <th data-sort="revenue">Revenue</th>
+            <th data-sort="employees">Employees</th>
+            <th data-sort="revenueYoY">Rev YoY</th>
+            <th data-sort="fitScore">Fit</th>
+            <th data-sort="fitTier">Tier</th>
+            <th data-sort="intentScore">Intent</th>
+            <th data-sort="intentBand">Band</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- Drawer -->
+  <div class="drawer-backdrop" id="drawerBackdrop"></div>
+  <aside class="drawer" id="drawer" data-lenis-prevent>
+    <div class="drawer-header">
+      <div style="flex:1; min-width:0;">
+        <button class="drawer-back" id="drBack" type="button">← Back</button>
+        <h2 id="drCompany">—</h2>
+        <div class="drawer-subline" id="drSubline">—</div>
+        <div class="drawer-badges" id="drBadges"></div>
+      </div>
+      <button class="drawer-close" id="drClose" aria-label="Close" type="button">✕</button>
+    </div>
+    <div class="drawer-body" id="drBody"></div>
+  </aside>
+
+  <div class="tooltip" id="tooltip"></div>
+  <div class="info-popover" id="infoPopover"></div>
+
+  <!-- Libraries -->
+  <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/ScrollTrigger.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/lenis@1.1.13/dist/lenis.min.js"></script>
+
+  <script>
+  /* ═══════════════════════════════════════════════════════════════════════
+     ICP Dashboard — robust two-axis scoring
+     Fit (A–D) from concrete firmographic/financial/technographic data
+     Intent (Cold/Warm/Hot) from 6sense + ZoomInfo intent signals
+     ═══════════════════════════════════════════════════════════════════════ */
+
+  // ── Seeded PRNG so the demo is consistent across reloads ─────────────────
+  function mulberry32(seed) {
+    return function () {
+      let t = seed += 0x6D2B79F5;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
+  const rand = mulberry32(1337);
+  const pick = arr => arr[Math.floor(rand() * arr.length)];
+  function sample(arr, n) {
+    const copy = arr.slice();
+    const out = [];
+    for (let i = 0; i < n && copy.length; i++) {
+      out.push(copy.splice(Math.floor(rand() * copy.length), 1)[0]);
+    }
+    return out;
+  }
+
+  // ── ICP target definitions ───────────────────────────────────────────────
+  const ICP = {
+    targetIndustries:    ['Technology', 'Financial Services', 'Healthcare'],
+    adjacentIndustries:  {
+      'Technology':         ['Media', 'Telecommunications'],
+      'Financial Services': ['Insurance', 'Real Estate'],
+      'Healthcare':         ['Pharmaceuticals', 'Insurance']
+    },
+    revenueSweetSpot:    [1e9, 5e9],
+    revenueAcceptable:   [250e6, 15e9],
+    employeeSweetSpot:   [1000, 10000],
+    employeeAcceptable:  [250, 50000],
+    geoTier1:            ['United States', 'Canada', 'United Kingdom'],
+    geoTier2:            ['Germany', 'France', 'Australia'],
+    targetTech:          ['Salesforce', 'Snowflake', 'AWS', 'Okta', 'Tableau', 'Workday'],
+    fitCutoffs:          { A: 80, B: 65, C: 45 },
+    intentCutoffs:       { Hot: 70, Warm: 40 }
+  };
+
+  // ── Lookup tables ────────────────────────────────────────────────────────
+  const INDUSTRIES = ['Technology', 'Financial Services', 'Healthcare', 'Retail', 'Manufacturing',
+    'Media', 'Telecommunications', 'Insurance', 'Real Estate', 'Pharmaceuticals',
+    'Energy', 'Education', 'Logistics', 'Hospitality', 'Construction'];
+  const SUB_INDUSTRIES = {
+    'Technology':         ['Enterprise Software', 'Cloud Infrastructure', 'Cybersecurity', 'Data & Analytics', 'Developer Tools'],
+    'Financial Services': ['Commercial Banking', 'Asset Management', 'Capital Markets', 'Payments', 'Wealth Management'],
+    'Healthcare':         ['Health Systems', 'Medical Devices', 'Health Tech', 'Diagnostics', 'Provider Networks'],
+    'Retail':             ['Specialty Retail', 'Grocery', 'Apparel', 'E-commerce'],
+    'Manufacturing':      ['Industrial', 'Automotive', 'Aerospace', 'Consumer Goods'],
+    'Media':              ['Publishing', 'Streaming', 'Advertising', 'Production'],
+    'Telecommunications': ['Wireless', 'Broadband', 'Network Infrastructure'],
+    'Insurance':          ['P&C', 'Life', 'Reinsurance', 'Health Insurance'],
+    'Real Estate':        ['Commercial', 'REIT', 'Property Mgmt'],
+    'Pharmaceuticals':    ['Biotech', 'Specialty Pharma', 'Generics'],
+    'Energy':             ['Oil & Gas', 'Renewables', 'Utilities'],
+    'Education':          ['Higher Ed', 'EdTech', 'K-12'],
+    'Logistics':          ['Freight', 'Last-Mile', 'Supply Chain'],
+    'Hospitality':        ['Hotels', 'Restaurants', 'Travel'],
+    'Construction':       ['Commercial Build', 'Infrastructure', 'Residential']
+  };
+  const SIC_CODES = {
+    'Technology':'7372','Financial Services':'6020','Healthcare':'8060','Retail':'5651',
+    'Manufacturing':'3711','Media':'2711','Telecommunications':'4813','Insurance':'6311',
+    'Real Estate':'6512','Pharmaceuticals':'2834','Energy':'1311','Education':'8221',
+    'Logistics':'4213','Hospitality':'7011','Construction':'1521'
+  };
+  const COUNTRIES = ['United States', 'United States', 'United States', 'Canada', 'United Kingdom',
+    'Germany', 'France', 'Australia', 'Japan', 'Brazil', 'India', 'Singapore', 'Mexico'];
+  const US_STATES = ['CA', 'NY', 'TX', 'MA', 'IL', 'WA', 'CO', 'GA', 'NC', 'FL', 'VA', 'PA'];
+  const TECH_POOL = ['Salesforce', 'Snowflake', 'AWS', 'Okta', 'Tableau', 'HubSpot', 'Workday',
+    'SAP', 'Oracle', 'Azure', 'GCP', 'Looker', 'Segment', 'Marketo', 'NetSuite',
+    'ServiceNow', 'DataDog', 'MongoDB', 'Twilio', 'Slack'];
+  const INTENT_KEYWORDS = ['data warehouse migration', 'cloud analytics', 'ETL replacement',
+    'customer 360 platform', 'data governance', 'self-service BI', 'real-time analytics',
+    'data mesh', 'data observability', 'reverse ETL', 'lakehouse architecture',
+    'AI/ML platform', 'data quality monitoring', 'composable CDP', 'data activation'];
+  const PREFIXES = ['Acme', 'Apex', 'Nova', 'Vertex', 'Lumen', 'Pioneer', 'Summit', 'Stratos',
+    'Quantum', 'Helix', 'Atlas', 'Beacon', 'Cobalt', 'Northwind', 'Crescent', 'Polaris',
+    'Aurora', 'Cascade', 'Granite', 'Ironbridge', 'Meridian', 'Sterling', 'Tempo', 'Vista',
+    'Halcyon', 'Cinder', 'Fjord', 'Glacier', 'Onyx', 'Pinnacle', 'Redwood', 'Tundra'];
+  const SUFFIXES = ['Systems', 'Labs', 'Holdings', 'Group', 'Partners', 'Industries', 'Networks',
+    'Dynamics', 'Logistics', 'Analytics', 'Capital', 'Solutions', 'Health', 'Energy', 'Media',
+    'Global', 'International', 'Worldwide', 'Technologies', 'Ventures'];
+
+  // ── Revenue bucket allocation (deterministic distribution) ───────────────
+  const REV_BUCKETS = [
+    { name: '<$250M',    lo:  50e6,  hi:  250e6, count: 30 },
+    { name: '$250M–$1B', lo: 250e6,  hi:    1e9, count: 45 },
+    { name: '$1B–$5B',   lo:   1e9,  hi:    5e9, count: 50 },
+    { name: '$5B–$15B',  lo:   5e9,  hi:   15e9, count: 30 },
+    { name: '$15B+',     lo:  15e9,  hi:   80e9, count: 20 }
+  ];
+  function revenueBandName(rev) {
+    for (const b of REV_BUCKETS) if (rev >= b.lo && rev < b.hi) return b.name;
+    return REV_BUCKETS[REV_BUCKETS.length - 1].name;
+  }
+
+  // ── DUNS-ish formatter ───────────────────────────────────────────────────
+  function fakeDuns() {
+    const r = () => String(Math.floor(rand() * 10));
+    return `${r()}${r()}-${r()}${r()}${r()}-${r()}${r()}${r()}${r()}`;
+  }
+
+  // ── Weighted industry pick (target industries weighted higher for matrix spread) ─
+  const INDUSTRY_WEIGHTS = INDUSTRIES.map(i => ICP.targetIndustries.includes(i) ? 3 : 1);
+  function pickWeightedIndustry() {
+    const total = INDUSTRY_WEIGHTS.reduce((a, b) => a + b, 0);
+    let r = rand() * total;
+    for (let i = 0; i < INDUSTRIES.length; i++) {
+      r -= INDUSTRY_WEIGHTS[i];
+      if (r <= 0) return INDUSTRIES[i];
+    }
+    return INDUSTRIES[INDUSTRIES.length - 1];
+  }
+
+  // ── Growth pattern picker — fans accounts across all four growth quadrants ──
+  //   growing      = both moderate positive          (top-right)
+  //   hyper        = both very positive              (top-right, deeper)
+  //   lagging      = neg revenue, pos employees      (top-left — hiring through downturn)
+  //   efficiency   = pos revenue, neg employees      (bottom-right — doing more with less)
+  //   contracting  = neg on both                     (bottom-left — in trouble)
+  function pickGrowthPattern() {
+    const r = rand();
+    if (r < 0.30) return 'growing';
+    if (r < 0.50) return 'hyper';
+    if (r < 0.70) return 'lagging';
+    if (r < 0.85) return 'efficiency';
+    return 'contracting';
+  }
+
+  // ── Generate one account ────────────────────────────────────────────────
+  function generateAccount(i, bucket, usedNames) {
+    let company;
+    do { company = pick(PREFIXES) + ' ' + pick(SUFFIXES); } while (usedNames.has(company));
+    usedNames.add(company);
+
+    const industry = pickWeightedIndustry();
+    const subIndustry = pick(SUB_INDUSTRIES[industry] || ['General']);
+    const sicCode = SIC_CODES[industry] || '7389';
+
+    // Revenue from the assigned bucket
+    const revenue = Math.round((bucket.lo + rand() * (bucket.hi - bucket.lo)) / 1e6) * 1e6;
+
+    // Employee count loosely correlated with revenue
+    const revPerEmp = 220000 + rand() * 480000;
+    const employees = Math.max(50, Math.round(revenue / revPerEmp / 10) * 10);
+
+    // Growth — pattern-based so accounts populate all four growth-quadrant regions
+    const growthPattern = pickGrowthPattern();
+    let employeesYoY, revenueYoY;
+    switch (growthPattern) {
+      case 'hyper':
+        employeesYoY = 25 + rand() * 35;
+        revenueYoY   = 18 + rand() * 32;
+        break;
+      case 'lagging':
+        employeesYoY =  2 + rand() * 18;
+        revenueYoY   = -2 - rand() * 14;
+        break;
+      case 'efficiency':
+        employeesYoY = -3 - rand() *  9;
+        revenueYoY   =  4 + rand() * 14;
+        break;
+      case 'contracting':
+        employeesYoY = -2 - rand() * 14;
+        revenueYoY   = -3 - rand() * 17;
+        break;
+      default: // 'growing'
+        employeesYoY =  3 + rand() * 17;
+        revenueYoY   =  2 + rand() * 14;
+    }
+    employeesYoY = Math.round(employeesYoY * 10) / 10;
+    revenueYoY   = Math.round(revenueYoY   * 10) / 10;
+
+    // 4-quarter trailing series (most recent last)
+    const empGrowthQ = Math.pow(1 + employeesYoY / 100, 1 / 4);
+    const employeesTrend4Q = [3, 2, 1, 0].map(k => Math.round(employees / Math.pow(empGrowthQ, k)));
+    const revGrowthQ = Math.pow(1 + revenueYoY / 100, 1 / 4);
+    const quarterlyRev = revenue / 4;
+    const revenueTrend4Q = [3, 2, 1, 0].map(k => Math.round(quarterlyRev / Math.pow(revGrowthQ, k) / 1e6) * 1e6);
+
+    // Ownership: bigger co's skew Public
+    let ownership;
+    if (revenue >= 5e9) ownership = pick(['Public', 'Public', 'Public', 'Private', 'Subsidiary']);
+    else if (revenue >= 1e9) ownership = pick(['Public', 'Public', 'Private', 'Private Equity', 'Subsidiary']);
+    else ownership = pick(['Private', 'Private', 'Private Equity', 'Public', 'Subsidiary']);
+
+    // Founded year
+    let yearFounded;
+    if (revenue >= 5e9) yearFounded = 1880 + Math.floor(rand() * 110);  // older skew
+    else if (revenue >= 1e9) yearFounded = 1955 + Math.floor(rand() * 55);
+    else yearFounded = 1985 + Math.floor(rand() * 38);
+
+    // Geo
+    const hqCountry = pick(COUNTRIES);
+    const hqState = hqCountry === 'United States' ? pick(US_STATES) : null;
+    const isMultinational = revenue >= 5e9 ? true : revenue >= 1e9 ? rand() > 0.3 : rand() > 0.75;
+    const numLocations = isMultinational ? 5 + Math.floor(rand() * 50) : 1 + Math.floor(rand() * 8);
+
+    // D&B financial health
+    const dnbCreditScore = Math.round(40 + rand() * 60);    // 40-100, skews fine
+    const dnbRiskRating  = 1 + Math.floor(rand() * 9);      // 1-9 (1 = best)
+    const financialStress =
+        dnbRiskRating <= 2 ? 'None'
+      : dnbRiskRating <= 4 ? 'Low'
+      : dnbRiskRating <= 7 ? 'Medium'
+                           : 'High';
+    const ebitdaMargin = Math.round((4 + rand() * 36) * 10) / 10;
+
+    // Technographics — larger companies have larger stacks
+    const stackBase = 2 + Math.floor(rand() * 6);
+    const stackBonus = Math.min(8, Math.floor(employees / 4000));
+    const techStack = sample(TECH_POOL, Math.min(TECH_POOL.length, stackBase + stackBonus));
+    const techSpendBand =
+        revenue >= 5e9   ? '$50M+'
+      : revenue >= 1e9   ? '$10M–$50M'
+      : revenue >= 250e6 ? '$1M–$10M'
+      :                    '<$1M';
+    const numChanges = Math.floor(rand() * 4);
+    const recentTechChanges = Array.from({ length: numChanges }, () => ({
+      tech: pick(TECH_POOL),
+      action: pick(['New install', 'Replacement', 'Expanded deployment', 'Pilot']),
+      monthsAgo: 1 + Math.floor(rand() * 12)
+    }));
+
+    // Decision-maker depth scales with size
+    const execCountTarget = Math.max(0, Math.min(20, Math.floor(employees / 600) + Math.floor(rand() * 5)));
+    const recentExecHires = Math.floor(rand() * 4);
+
+    // 6sense intent
+    const intentScoreRaw = Math.round(rand() * 100);
+    const buyingStage = pick(['Awareness', 'Awareness', 'Awareness', 'Consideration', 'Consideration', 'Decision', 'Decision', 'Purchase']);
+    const intentKeywords = sample(INTENT_KEYWORDS, 2 + Math.floor(rand() * 4));
+    const webEngagement = Math.round(rand() * 100);
+    const contentDownloads = Math.floor(rand() * 9);
+
+    // Triggers
+    const fundingRecent = rand() < 0.28;
+    const fundingAmountM = fundingRecent ? Math.round(rand() * 480) + 10 : 0;
+    const fundingMonthsAgo = fundingRecent ? 1 + Math.floor(rand() * 12) : null;
+    const hiringPostings = Math.floor(rand() * 12);
+    const leadershipChangesRecent = Math.floor(rand() * 4);
+
+    return {
+      id:            'ACC-' + String(1000 + i),
+      duns:          fakeDuns(),
+      company, industry, subIndustry, sicCode,
+      yearFounded, ownership,
+      employees, employeesYoY, employeesTrend4Q,
+      revenue, revenueBand: revenueBandName(revenue), revenueYoY, revenueTrend4Q,
+      ebitdaMargin, dnbCreditScore, dnbRiskRating, financialStress,
+      hqCountry, hqState, numLocations, isMultinational,
+      techStack, techSpendBand, recentTechChanges,
+      execCountTarget, recentExecHires,
+      intentScoreRaw, buyingStage, intentKeywords, webEngagement, contentDownloads,
+      fundingRecent, fundingAmountM, fundingMonthsAgo,
+      hiringPostings, leadershipChangesRecent
+    };
+  }
+
+  function generateAccounts() {
+    const accounts = [];
+    const usedNames = new Set();
+    let i = 0;
+    for (const b of REV_BUCKETS) {
+      for (let n = 0; n < b.count; n++) accounts.push(generateAccount(i++, b, usedNames));
+    }
+    return accounts;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // SCORING
+  // ════════════════════════════════════════════════════════════════════════
+
+  function isAdjacentIndustry(industry) {
+    for (const target of ICP.targetIndustries) {
+      if ((ICP.adjacentIndustries[target] || []).includes(industry)) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fit Score — 100 pts across 9 dimensions.
+   * Concrete data only: firmographics, financial health, tech, growth, structure.
+   */
+  function scoreFit(a) {
+    // 1. Industry (12) — target vs adjacent vs non-target
+    let industry = 0;
+    if (ICP.targetIndustries.includes(a.industry)) industry = 12;
+    else if (isAdjacentIndustry(a.industry))       industry = 6;
+
+    // 2. Revenue band (12) — sweet spot $1B–$5B
+    const [rLo, rHi] = ICP.revenueSweetSpot;
+    const [arLo, arHi] = ICP.revenueAcceptable;
+    let revenue = 0;
+    if (a.revenue >= rLo && a.revenue <= rHi)         revenue = 12;
+    else if (a.revenue >= arLo && a.revenue <= arHi)  revenue = 7;
+    else if (a.revenue > 0)                            revenue = 3;
+
+    // 3. Employee size (10) — sweet spot 1k–10k
+    const [eLo, eHi] = ICP.employeeSweetSpot;
+    const [aeLo, aeHi] = ICP.employeeAcceptable;
+    let employees = 0;
+    if (a.employees >= eLo && a.employees <= eHi)        employees = 10;
+    else if (a.employees >= aeLo && a.employees <= aeHi) employees = 6;
+    else                                                  employees = 2;
+
+    // 4. Financial health (12) = credit (6) + risk (6) - stress penalty
+    let financialBase = 0;
+    financialBase += Math.round((a.dnbCreditScore / 100) * 6);   // 0–6
+    financialBase += Math.max(0, 7 - a.dnbRiskRating);            // risk 1→6 ... 7+→0
+    if (a.financialStress === 'High')      financialBase = Math.round(financialBase * 0.4);
+    else if (a.financialStress === 'Medium') financialBase = Math.round(financialBase * 0.7);
+    const financial = Math.max(0, Math.min(12, financialBase));
+
+    // 5. Technographic overlap + spend tier (16)
+    const overlap = a.techStack.filter(t => ICP.targetTech.includes(t)).length;
+    const overlapPts = Math.round((overlap / ICP.targetTech.length) * 10);  // 0–10
+    const spendPts = { '$50M+': 6, '$10M–$50M': 4, '$1M–$10M': 2, '<$1M': 0 }[a.techSpendBand] || 0;
+    const tech = Math.min(16, overlapPts + spendPts);
+
+    // 6. Growth trajectory (14) — blended employee + revenue YoY
+    let growth = 0;
+    if (a.employeesYoY >= 25)      growth += 5;
+    else if (a.employeesYoY >= 12) growth += 3.5;
+    else if (a.employeesYoY >= 5)  growth += 2;
+    else if (a.employeesYoY >= 0)  growth += 0.5;
+    if (a.revenueYoY >= 18)        growth += 9;
+    else if (a.revenueYoY >= 10)   growth += 6.5;
+    else if (a.revenueYoY >= 4)    growth += 4;
+    else if (a.revenueYoY >= 0)    growth += 1.5;
+    growth = Math.min(14, Math.round(growth));
+
+    // 7. Geographic fit (10)
+    let geo = 0;
+    if (ICP.geoTier1.includes(a.hqCountry))      geo = 7;
+    else if (ICP.geoTier2.includes(a.hqCountry)) geo = 4;
+    else                                          geo = 1;
+    if (a.isMultinational) geo += 3;
+    geo = Math.min(10, geo);
+
+    // 8. Org structure (8)
+    let org = 0;
+    if (a.ownership === 'Public')              org += 4;
+    else if (a.ownership === 'Private Equity') org += 3;
+    else if (a.ownership === 'Private')        org += 2;
+    else if (a.ownership === 'Subsidiary')     org += 1;
+    if (a.numLocations >= 10)     org += 2;
+    else if (a.numLocations >= 3) org += 1;
+    if (a.yearFounded < 2000)     org += 2;
+    else if (a.yearFounded < 2015) org += 1;
+    org = Math.min(8, org);
+
+    // 9. Decision-maker depth (6)
+    let dm = 0;
+    if (a.execCountTarget >= 10)     dm = 4;
+    else if (a.execCountTarget >= 5) dm = 3;
+    else if (a.execCountTarget >= 2) dm = 2;
+    else if (a.execCountTarget >= 1) dm = 1;
+    if (a.recentExecHires >= 2)      dm += 2;
+    else if (a.recentExecHires >= 1) dm += 1;
+    dm = Math.min(6, dm);
+
+    const total = industry + revenue + employees + financial + tech + growth + geo + org + dm;
+    let tier = 'D';
+    if (total >= ICP.fitCutoffs.A)      tier = 'A';
+    else if (total >= ICP.fitCutoffs.B) tier = 'B';
+    else if (total >= ICP.fitCutoffs.C) tier = 'C';
+
+    return {
+      fitScore: total,
+      fitTier: tier,
+      fitPts: {
+        industry:  { v: industry,  max: 12, label: 'Industry match',         src: 'ZoomInfo · D&B' },
+        revenue:   { v: revenue,   max: 12, label: 'Revenue band',           src: 'D&B Hoovers' },
+        employees: { v: employees, max: 10, label: 'Employee size',          src: 'ZoomInfo' },
+        financial: { v: financial, max: 12, label: 'Financial health',       src: 'D&B Hoovers' },
+        tech:      { v: tech,      max: 16, label: 'Technographic overlap',  src: 'HG Insights' },
+        growth:    { v: growth,    max: 14, label: 'Growth trajectory',      src: 'ZoomInfo · D&B' },
+        geo:       { v: geo,       max: 10, label: 'Geographic fit',         src: 'D&B · ZoomInfo' },
+        org:       { v: org,       max:  8, label: 'Org structure',          src: 'D&B' },
+        dm:        { v: dm,        max:  6, label: 'Decision-maker depth',   src: 'ZoomInfo' }
+      }
+    };
+  }
+
+  /**
+   * Intent Score — 100 pts across 7 signals.
+   * Intent-only data: research surge, stage, engagement, hiring, leadership, funding, tech change.
+   */
+  function scoreIntent(a) {
+    // 1. 6sense intent surge (30) — scaled from 0-100
+    const intent6Sense = Math.round((a.intentScoreRaw / 100) * 30);
+
+    // 2. Buying stage (20)
+    const stageMap = { 'Awareness': 5, 'Consideration': 12, 'Decision': 17, 'Purchase': 20 };
+    const buyingStage = stageMap[a.buyingStage] || 0;
+
+    // 3. Web + content engagement (15)
+    let engagement = Math.round((a.webEngagement / 100) * 10);
+    if (a.contentDownloads >= 5)      engagement += 5;
+    else if (a.contentDownloads >= 2) engagement += 3;
+    else if (a.contentDownloads >= 1) engagement += 1;
+    engagement = Math.min(15, engagement);
+
+    // 4. Hiring for relevant roles (10)
+    let hiring = 0;
+    if (a.hiringPostings >= 6)      hiring = 10;
+    else if (a.hiringPostings >= 3) hiring = 7;
+    else if (a.hiringPostings >= 1) hiring = 4;
+
+    // 5. Recent leadership changes (10)
+    let leadership = 0;
+    if (a.leadershipChangesRecent >= 2)      leadership = 10;
+    else if (a.leadershipChangesRecent >= 1) leadership = 6;
+
+    // 6. Funding event in last 12mo (10) — fresher = stronger
+    let funding = 0;
+    if (a.fundingRecent) {
+      if (a.fundingMonthsAgo <= 3)      funding = 10;
+      else if (a.fundingMonthsAgo <= 6) funding = 7;
+      else                              funding = 4;
+    }
+
+    // 7. Tech change-of-status (5)
+    let techChange = 0;
+    if (a.recentTechChanges.length >= 2)      techChange = 5;
+    else if (a.recentTechChanges.length >= 1) techChange = 3;
+
+    const total = intent6Sense + buyingStage + engagement + hiring + leadership + funding + techChange;
+    let band = 'Cold';
+    if (total >= ICP.intentCutoffs.Hot)       band = 'Hot';
+    else if (total >= ICP.intentCutoffs.Warm) band = 'Warm';
+
+    return {
+      intentScore: total,
+      intentBand: band,
+      intentPts: {
+        intent6Sense: { v: intent6Sense, max: 30, label: '6sense intent surge',    src: '6sense' },
+        buyingStage:  { v: buyingStage,  max: 20, label: 'Buying stage',           src: '6sense' },
+        engagement:   { v: engagement,   max: 15, label: 'Web + content engagement', src: '6sense · ZoomInfo' },
+        hiring:       { v: hiring,       max: 10, label: 'Hiring (target roles)',  src: 'ZoomInfo' },
+        leadership:   { v: leadership,   max: 10, label: 'Leadership changes',     src: 'ZoomInfo' },
+        funding:      { v: funding,      max: 10, label: 'Funding event (12mo)',   src: 'D&B · ZoomInfo' },
+        techChange:   { v: techChange,   max:  5, label: 'Tech change-of-status',  src: 'HG Insights' }
+      }
+    };
+  }
+
+  function applyScoring(accounts) {
+    return accounts.map(a => ({ ...a, ...scoreFit(a), ...scoreIntent(a) }));
+  }
+
+  function buildSummary(accs) {
+    const total = accs.length;
+    const sumFit = accs.reduce((s, a) => s + a.fitScore, 0);
+    const tierCounts   = { A: 0, B: 0, C: 0, D: 0 };
+    const intentCounts = { Hot: 0, Warm: 0, Cold: 0 };
+    accs.forEach(a => { tierCounts[a.fitTier]++; intentCounts[a.intentBand]++; });
+
+    // Fit×Intent matrix counts
+    const matrix = {};
+    ['A','B','C','D'].forEach(t => {
+      matrix[t] = { Hot: 0, Warm: 0, Cold: 0 };
+    });
+    accs.forEach(a => { matrix[a.fitTier][a.intentBand]++; });
+
+    // By industry
+    const indMap = {};
+    accs.forEach(a => {
+      if (!indMap[a.industry]) indMap[a.industry] = { sum: 0, n: 0 };
+      indMap[a.industry].sum += a.fitScore;
+      indMap[a.industry].n   += 1;
+    });
+    const byIndustry = Object.keys(indMap).map(k => ({
+      industry: k,
+      avgFit: Math.round(indMap[k].sum / indMap[k].n),
+      count: indMap[k].n
+    })).sort((a, b) => b.avgFit - a.avgFit);
+
+    const aHot = matrix.A.Hot;
+    return {
+      total,
+      avgFit: Math.round(sumFit / total),
+      aCount: tierCounts.A, bCount: tierCounts.B, cCount: tierCounts.C, dCount: tierCounts.D,
+      hotCount: intentCounts.Hot, warmCount: intentCounts.Warm, coldCount: intentCounts.Cold,
+      aPct:   Math.round(tierCounts.A / total * 100),
+      hotPct: Math.round(intentCounts.Hot / total * 100),
+      aHot,
+      matrix,
+      byIndustry
+    };
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // STATE
+  // ════════════════════════════════════════════════════════════════════════
+
+  const ACCOUNTS = applyScoring(generateAccounts());
+  const SUMMARY  = buildSummary(ACCOUNTS);
+  const STATE = {
+    sortKey:      'fitScore',
+    sortDir:      'desc',
+    search:       '',
+    tierFilter:   '',
+    intentFilter: '',
+    drawerAccountId: null
+  };
+
+  const TIER_COLORS   = { A: '#d450e6', B: '#6e50e6', C: '#50e6e1', D: '#e65082' };
+  const INTENT_COLORS = { Hot: '#ff4757', Warm: '#ffa502', Cold: '#54a0ff' };
+
+  // ════════════════════════════════════════════════════════════════════════
+  // INFO POPOVERS (methodology snippets, hover)
+  // ════════════════════════════════════════════════════════════════════════
+
+  const INFO_CONTENT = {
+    'kpi-total':  { title: 'Total accounts',     body: 'All accounts in this enrichment run, sourced from ZoomInfo + D&B Hoovers. Each carries firmographic, financial, technographic, and intent data.' },
+    'kpi-avg':    { title: 'Average fit score',  body: 'Mean Fit Score across all accounts. Built from concrete firmographic, financial, tech, and growth data (not intent).', src: 'ZoomInfo · HG Insights · D&B' },
+    'kpi-a':      { title: 'A-tier accounts',    body: 'Accounts scoring ≥ 80 on the 100-pt Fit Score. These match your ICP regardless of buying signal.', src: 'Fit cutoff: A ≥ 80' },
+    'kpi-hot':    { title: 'Hot intent',         body: 'Accounts scoring ≥ 70 on the 100-pt Intent Score. Live signals show they are actively researching/buying right now.', src: '6sense · Intent cutoff: Hot ≥ 70' },
+    'kpi-prime':  { title: 'A + Hot segment',    body: 'The intersection of high fit AND high intent — your call-first list. These accounts are both right-shaped AND shopping.' },
+    'chart-matrix':   { title: 'Fit × Intent matrix', body: 'Account counts across the two scoring axes. Top-right (A + Hot) is the priority cell. Bottom-left (D + Cold) is deprioritization.' },
+    'chart-industry': { title: 'Avg fit by industry', body: 'Average Fit Score grouped by industry — quickly shows where the ICP concentrates and where it dilutes.' },
+    'chart-quadrant': { title: 'Growth quadrant',     body: 'Plots employee growth (Y) against revenue growth (X). Top-right is hyper-growth, bottom-left is contracting. Dot color = Fit tier, size = revenue.' },
+    'table':          { title: 'Account rankings',    body: 'Click any row to open the full score breakdown drawer with per-dimension points, 4-quarter growth sparklines, intent keywords, and contributing data sources.' }
+  };
+  const popoverEl = document.getElementById('infoPopover');
+  function showPopover(target) {
+    const key = target.dataset.info;
+    const info = INFO_CONTENT[key];
+    if (!info) return;
+    popoverEl.innerHTML =
+      `<div class="title">${info.title}</div>` +
+      `<div>${info.body}</div>` +
+      (info.src ? `<div class="src">${info.src}</div>` : '');
+    const r = target.getBoundingClientRect();
+    const tw = 280;
+    let x = r.right + 10;
+    if (x + tw > window.innerWidth - 8) x = r.left - tw - 10;
+    popoverEl.style.left = Math.max(8, x) + 'px';
+    popoverEl.style.top = Math.max(8, r.top - 4) + 'px';
+    popoverEl.classList.add('show');
+  }
+  function hidePopover() { popoverEl.classList.remove('show'); }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // TOOLTIP (for charts)
+  // ════════════════════════════════════════════════════════════════════════
+
+  const tooltip = document.getElementById('tooltip');
+  function showTooltip(html, evt) {
+    tooltip.innerHTML = html;
+    tooltip.classList.add('show');
+    moveTooltip(evt);
+  }
+  function moveTooltip(evt) {
+    const pad = 14;
+    const tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
+    let x = evt.clientX + pad;
+    let y = evt.clientY + pad;
+    if (x + tw > window.innerWidth - 8)  x = evt.clientX - tw - pad;
+    if (y + th > window.innerHeight - 8) y = evt.clientY - th - pad;
+    tooltip.style.left = x + 'px';
+    tooltip.style.top  = y + 'px';
+  }
+  function hideTooltip() { tooltip.classList.remove('show'); }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // KPI RENDER (with count-up animation)
+  // ════════════════════════════════════════════════════════════════════════
+
+  function renderKpis() {
+    document.getElementById('kpiTotal').dataset.count = SUMMARY.total;
+    document.getElementById('kpiAvg').dataset.count   = SUMMARY.avgFit;
+    document.getElementById('kpiA').dataset.count     = SUMMARY.aCount;
+    document.getElementById('kpiAPct').textContent    = SUMMARY.aPct + '% of book';
+    document.getElementById('kpiHot').dataset.count   = SUMMARY.hotCount;
+    document.getElementById('kpiHotPct').textContent  = SUMMARY.hotPct + '% of book';
+    document.getElementById('kpiPrime').dataset.count = SUMMARY.aHot;
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // D3: FIT × INTENT MATRIX
+  // ════════════════════════════════════════════════════════════════════════
+
+  function renderMatrix() {
+    const host = d3.select('#chartMatrix');
+    host.selectAll('*').remove();
+    const rect = host.node().getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+
+    const fitTiers   = ['A', 'B', 'C', 'D'];
+    const intentBands = ['Hot', 'Warm', 'Cold'];
+    const margin = { top: 28, right: 16, bottom: 12, left: 80 };
+    const iw = w - margin.left - margin.right;
+    const ih = h - margin.top - margin.bottom;
+    const cw = iw / intentBands.length;
+    const ch = ih / fitTiers.length;
+
+    const svg = host.append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // column labels (intent bands)
+    g.selectAll('text.col-label').data(intentBands).enter().append('text')
+      .attr('class', 'matrix-label')
+      .attr('x', (d, i) => cw * i + cw / 2)
+      .attr('y', -10)
+      .attr('text-anchor', 'middle')
+      .attr('fill', d => INTENT_COLORS[d])
+      .style('font-weight', 600)
+      .style('text-transform', 'uppercase')
+      .style('letter-spacing', '0.06em')
+      .text(d => d);
+
+    // row labels (fit tiers)
+    g.selectAll('text.row-label').data(fitTiers).enter().append('text')
+      .attr('class', 'matrix-label matrix-row-label')
+      .attr('x', -14)
+      .attr('y', (d, i) => ch * i + ch / 2 + 4)
+      .attr('text-anchor', 'end')
+      .attr('fill', d => TIER_COLORS[d])
+      .text(d => 'Tier ' + d);
+
+    // cells
+    const cells = [];
+    fitTiers.forEach((t, ri) => {
+      intentBands.forEach((b, ci) => {
+        cells.push({
+          tier: t, band: b,
+          count: SUMMARY.matrix[t][b] || 0,
+          x: cw * ci, y: ch * ri
+        });
+      });
+    });
+    const maxCount = d3.max(cells, d => d.count) || 1;
+
+    const cellG = g.selectAll('g.cell').data(cells).enter().append('g')
+      .attr('class', 'cell')
+      .attr('transform', d => `translate(${d.x},${d.y})`)
+      .style('cursor', 'pointer')
+      .on('click', (e, d) => openMatrixCellView(d.tier, d.band))
+      .on('mousemove', (e, d) => showTooltip(
+        `<div class="t-company">Tier ${d.tier} · ${d.band}</div>
+         <div class="t-row"><strong>${d.count}</strong> account${d.count === 1 ? '' : 's'}</div>
+         <div class="t-row">${Math.round(d.count / SUMMARY.total * 100)}% of book</div>
+         <div class="t-row" style="margin-top:4px;color:var(--accent);">Click to view accounts →</div>`, e))
+      .on('mouseleave', hideTooltip);
+
+    cellG.append('rect')
+      .attr('class', 'matrix-cell')
+      .attr('width', cw - 6)
+      .attr('height', ch - 6)
+      .attr('x', 3)
+      .attr('y', 3)
+      .attr('rx', 10)
+      .attr('fill', d => {
+        const t = (d.count / maxCount);
+        const base = d3.color(TIER_COLORS[d.tier]);
+        base.opacity = 0.10 + t * 0.55;
+        return base + '';
+      })
+      .attr('stroke', d => {
+        const t = (d.count / maxCount);
+        const c = d3.color(INTENT_COLORS[d.band]);
+        c.opacity = 0.25 + t * 0.55;
+        return c + '';
+      })
+      .attr('stroke-width', 1)
+      .attr('opacity', 0)
+      .transition().delay((d, i) => i * 35).duration(550).ease(d3.easeCubicOut)
+      .attr('opacity', 1);
+
+    cellG.append('text')
+      .attr('class', 'matrix-cell-count')
+      .attr('x', cw / 2)
+      .attr('y', ch / 2 + 2)
+      .attr('text-anchor', 'middle')
+      .attr('fill', d => d.count > 0 ? '#fff' : 'rgba(255,255,255,0.25)')
+      .attr('opacity', 0)
+      .text(d => d.count)
+      .transition().delay((d, i) => 200 + i * 35).duration(400)
+      .attr('opacity', 1);
+
+    cellG.append('text')
+      .attr('class', 'matrix-cell-sub')
+      .attr('x', cw / 2)
+      .attr('y', ch / 2 + 20)
+      .attr('text-anchor', 'middle')
+      .attr('fill', 'rgba(255,255,255,0.45)')
+      .attr('opacity', 0)
+      .text(d => d.count > 0 ? Math.round(d.count / SUMMARY.total * 100) + '%' : '')
+      .transition().delay((d, i) => 280 + i * 35).duration(400)
+      .attr('opacity', 1);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // D3: INDUSTRY HORIZONTAL BAR
+  // ════════════════════════════════════════════════════════════════════════
+
+  function renderIndustryChart() {
+    const host = d3.select('#chartIndustry');
+    host.selectAll('*').remove();
+    const rect = host.node().getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const margin = { top: 8, right: 44, bottom: 8, left: 140 };
+    const iw = w - margin.left - margin.right;
+    const ih = h - margin.top - margin.bottom;
+
+    const data = SUMMARY.byIndustry;
+    const x = d3.scaleLinear().domain([0, 100]).range([0, iw]);
+    const y = d3.scaleBand().domain(data.map(d => d.industry)).range([0, ih]).padding(0.28);
+
+    const svg = host.append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    g.append('g').attr('class', 'axis')
+      .call(d3.axisLeft(y).tickSize(0))
+      .call(s => s.select('.domain').remove());
+
+    g.selectAll('rect.bar-track').data(data).enter().append('rect')
+      .attr('class', 'bar-track')
+      .attr('x', 0).attr('y', d => y(d.industry))
+      .attr('height', y.bandwidth()).attr('width', iw).attr('rx', 4);
+
+    const colorFor = v => v >= 80 ? TIER_COLORS.A : v >= 65 ? TIER_COLORS.B : v >= 45 ? TIER_COLORS.C : TIER_COLORS.D;
+
+    g.selectAll('rect.bar').data(data).enter().append('rect')
+      .attr('class', 'bar')
+      .attr('x', 0).attr('y', d => y(d.industry))
+      .attr('height', y.bandwidth()).attr('width', 0).attr('rx', 4)
+      .attr('fill', d => colorFor(d.avgFit))
+      .style('color', d => colorFor(d.avgFit))
+      .on('click', (e, d) => openIndustryView(d.industry))
+      .on('mousemove', (e, d) => showTooltip(
+        `<div class="t-company">${d.industry}</div>
+         <div class="t-row">Avg fit: <strong>${d.avgFit}</strong></div>
+         <div class="t-row">${d.count} account${d.count === 1 ? '' : 's'}</div>
+         <div class="t-row" style="margin-top:4px;color:var(--accent);">Click to view accounts →</div>`, e))
+      .on('mouseleave', hideTooltip)
+      .transition().delay((d, i) => i * 45).duration(900).ease(d3.easeCubicOut)
+      .attr('width', d => x(d.avgFit));
+
+    g.selectAll('text.bar-value').data(data).enter().append('text')
+      .attr('class', 'bar-value')
+      .attr('y', d => y(d.industry) + y.bandwidth() / 2 + 4)
+      .attr('x', 4).attr('opacity', 0).text(d => d.avgFit)
+      .transition().delay((d, i) => 600 + i * 45).duration(400)
+      .attr('opacity', 1).attr('x', d => x(d.avgFit) + 8);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // D3: GROWTH QUADRANT (employee growth × revenue growth)
+  // ════════════════════════════════════════════════════════════════════════
+
+  function renderQuadrantChart() {
+    const host = d3.select('#chartQuadrant');
+    host.selectAll('*').remove();
+    const rect = host.node().getBoundingClientRect();
+    const w = rect.width, h = rect.height;
+    const margin = { top: 24, right: 30, bottom: 56, left: 64 };
+    const iw = w - margin.left - margin.right;
+    const ih = h - margin.top - margin.bottom;
+
+    const xExt = d3.extent(ACCOUNTS, d => d.revenueYoY);
+    const yExt = d3.extent(ACCOUNTS, d => d.employeesYoY);
+    const xMax = Math.max(Math.abs(xExt[0]), Math.abs(xExt[1])) * 1.1;
+    const yMax = Math.max(Math.abs(yExt[0]), Math.abs(yExt[1])) * 1.1;
+    const x = d3.scaleLinear().domain([-xMax, xMax]).range([0, iw]);
+    const y = d3.scaleLinear().domain([-yMax, yMax]).range([ih, 0]);
+    const r = d3.scaleSqrt().domain([0, d3.max(ACCOUNTS, d => d.revenue)]).range([4, 22]);
+
+    const svg = host.append('svg').attr('viewBox', `0 0 ${w} ${h}`);
+    const g = svg.append('g').attr('transform', `translate(${margin.left},${margin.top})`);
+
+    // grid
+    g.append('g').attr('class', 'grid')
+      .call(d3.axisLeft(y).ticks(5).tickSize(-iw).tickFormat(''));
+    g.append('g').attr('class', 'grid').attr('transform', `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(6).tickSize(-ih).tickFormat(''));
+
+    // origin lines
+    g.append('line').attr('class', 'quad-line')
+      .attr('x1', x(0)).attr('x2', x(0)).attr('y1', 0).attr('y2', ih);
+    g.append('line').attr('class', 'quad-line')
+      .attr('y1', y(0)).attr('y2', y(0)).attr('x1', 0).attr('x2', iw);
+
+    // axes
+    g.append('g').attr('class', 'axis').attr('transform', `translate(0,${ih})`)
+      .call(d3.axisBottom(x).ticks(7).tickFormat(d => d + '%'));
+    g.append('g').attr('class', 'axis')
+      .call(d3.axisLeft(y).ticks(6).tickFormat(d => d + '%'));
+
+    g.append('text').attr('class', 'axis-title')
+      .attr('x', iw / 2).attr('y', ih + 42)
+      .attr('text-anchor', 'middle').text('Revenue growth (YoY)');
+    g.append('text').attr('class', 'axis-title')
+      .attr('transform', `translate(-48,${ih/2}) rotate(-90)`)
+      .attr('text-anchor', 'middle').text('Employee growth (YoY)');
+
+    // quadrant labels
+    g.append('text').attr('class', 'quad-label').attr('x', iw - 8).attr('y', 14).attr('text-anchor', 'end').text('Hyper-growth');
+    g.append('text').attr('class', 'quad-label').attr('x', 8).attr('y', 14).text('Hiring · revenue lagging');
+    g.append('text').attr('class', 'quad-label').attr('x', iw - 8).attr('y', ih - 6).attr('text-anchor', 'end').text('Efficiency play');
+    g.append('text').attr('class', 'quad-label').attr('x', 8).attr('y', ih - 6).text('Contracting');
+
+    // dots
+    g.selectAll('circle.dot').data(ACCOUNTS, d => d.id).enter().append('circle')
+      .attr('class', 'dot')
+      .attr('cx', d => x(d.revenueYoY))
+      .attr('cy', d => y(d.employeesYoY))
+      .attr('r', 0)
+      .attr('fill', d => TIER_COLORS[d.fitTier])
+      .style('color', d => TIER_COLORS[d.fitTier])
+      .attr('fill-opacity', 0.72)
+      .attr('stroke', d => INTENT_COLORS[d.intentBand])
+      .attr('stroke-width', d => d.intentBand === 'Hot' ? 2 : 1)
+      .on('click', (e, d) => openAccountView(d.id))
+      .on('mousemove', (e, d) => showTooltip(
+        `<div class="t-company">${d.company}</div>
+         <div class="t-row">${d.industry} · $${formatMillions(d.revenue)} revenue</div>
+         <div class="t-row">Rev YoY <strong>${d.revenueYoY}%</strong> · Emp YoY <strong>${d.employeesYoY}%</strong></div>
+         <div class="t-row">Fit <strong>${d.fitTier}</strong> · Intent <strong>${d.intentBand}</strong></div>`, e))
+      .on('mouseleave', hideTooltip)
+      .transition().delay((d, i) => i * 12).duration(700).ease(d3.easeCubicOut)
+      .attr('r', d => r(d.revenue));
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // TABLE
+  // ════════════════════════════════════════════════════════════════════════
+
+  function renderTable() {
+    const tbody = document.querySelector('#accountsTable tbody');
+    let rows = ACCOUNTS.slice();
+    if (STATE.search) {
+      const q = STATE.search;
+      rows = rows.filter(r => r.company.toLowerCase().includes(q) || r.industry.toLowerCase().includes(q));
+    }
+    if (STATE.tierFilter)   rows = rows.filter(r => r.fitTier    === STATE.tierFilter);
+    if (STATE.intentFilter) rows = rows.filter(r => r.intentBand === STATE.intentFilter);
+
+    rows.sort((a, b) => {
+      let av = a[STATE.sortKey], bv = b[STATE.sortKey];
+      if (typeof av === 'string') av = av.toLowerCase();
+      if (typeof bv === 'string') bv = bv.toLowerCase();
+      av ??= ''; bv ??= '';
+      if (av < bv) return STATE.sortDir === 'asc' ? -1 : 1;
+      if (av > bv) return STATE.sortDir === 'asc' ?  1 : -1;
+      return 0;
+    });
+
+    document.querySelectorAll('#accountsTable thead th').forEach(th => {
+      th.classList.remove('sorted-asc', 'sorted-desc');
+      if (th.dataset.sort === STATE.sortKey) {
+        th.classList.add(STATE.sortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+      }
+    });
+
+    const html = rows.map((r, i) => `
+      <tr data-id="${r.id}">
+        <td>${i + 1}</td>
+        <td>${escapeHtml(r.company)}</td>
+        <td>${escapeHtml(r.industry)}</td>
+        <td>$${formatMillions(r.revenue)}</td>
+        <td>${formatNumber(r.employees)}</td>
+        <td class="${r.revenueYoY >= 0 ? '' : ''}">${r.revenueYoY > 0 ? '+' : ''}${r.revenueYoY}%</td>
+        <td class="score-cell"><span class="score-bar"><i style="width:${r.fitScore}%"></i></span>${r.fitScore}</td>
+        <td><span class="tier-badge tier-${r.fitTier}">${r.fitTier}</span></td>
+        <td class="score-cell"><span class="score-bar intent"><i style="width:${r.intentScore}%"></i></span>${r.intentScore}</td>
+        <td><span class="intent-chip intent-${r.intentBand}"><span class="heat-dot"></span>${r.intentBand}</span></td>
+      </tr>
+    `).join('');
+    tbody.innerHTML = html;
+
+    // bind row clicks
+    tbody.querySelectorAll('tr').forEach(tr => {
+      tr.addEventListener('click', () => openAccountView(tr.dataset.id));
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // DRAWER
+  // ════════════════════════════════════════════════════════════════════════
+
+  const drawer = document.getElementById('drawer');
+  const drawerBackdrop = document.getElementById('drawerBackdrop');
+  const drawerStack = [];
+
+  function openView(view) {
+    drawerStack.push(view);
+    renderDrawerTop();
+    drawerBackdrop.classList.add('open');
+    drawer.classList.add('open');
+  }
+  function popDrawerView() {
+    drawerStack.pop();
+    if (drawerStack.length === 0) closeDrawer();
+    else renderDrawerTop();
+  }
+  function closeDrawer() {
+    drawerStack.length = 0;
+    drawerBackdrop.classList.remove('open');
+    drawer.classList.remove('open');
+  }
+  function renderDrawerTop() {
+    const view = drawerStack[drawerStack.length - 1];
+    if (!view) return;
+    document.getElementById('drCompany').textContent = view.title;
+    document.getElementById('drSubline').textContent = view.subtitle || '';
+    document.getElementById('drBadges').innerHTML = view.badges || '';
+    document.getElementById('drBody').innerHTML = view.body;
+    const back = document.getElementById('drBack');
+    if (drawerStack.length > 1) back.classList.add('show');
+    else back.classList.remove('show');
+    if (view.afterRender) view.afterRender();
+    document.getElementById('drBody').scrollTop = 0;
+  }
+
+  // ── Account view (single-account detail) ─────────────────────────────────
+  function openAccountView(id) {
+    const a = ACCOUNTS.find(x => x.id === id);
+    if (!a) return;
+    openView({
+      title: a.company,
+      subtitle: `${a.industry} · ${a.subIndustry} · ${a.hqCountry}${a.hqState ? ', ' + a.hqState : ''}`,
+      badges:
+        `<span class="tier-badge tier-${a.fitTier}">Fit ${a.fitTier} · ${a.fitScore}/100</span>
+         <span class="intent-chip intent-${a.intentBand}"><span class="heat-dot"></span>${a.intentBand} · ${a.intentScore}/100</span>`,
+      body: drawerBody(a),
+      afterRender: () => {
+        renderSparkline(`spark-emp-${a.id}`, a.employeesTrend4Q, '#6e50e6');
+        renderSparkline(`spark-rev-${a.id}`, a.revenueTrend4Q,   '#d450e6');
+      }
+    });
+  }
+
+  // ── Reusable list/dist components ────────────────────────────────────────
+  function accountRow(a) {
+    return `
+      <div class="acct-row" data-account-id="${a.id}">
+        <div>
+          <div class="co">${escapeHtml(a.company)}</div>
+          <div class="meta">${escapeHtml(a.industry)} · $${formatMillions(a.revenue)} · ${formatNumber(a.employees)} emp · ${escapeHtml(a.hqCountry)}</div>
+        </div>
+        <div class="scores">
+          <div class="badge-pair">
+            <span class="tier-mini tier-${a.fitTier}">${a.fitTier}</span>
+            <span class="intent-mini intent-${a.intentBand}"><span class="heat-dot"></span>${a.intentBand}</span>
+          </div>
+          <div class="s"><strong>${a.fitScore}</strong> · <strong>${a.intentScore}</strong></div>
+        </div>
+      </div>
+    `;
+  }
+  function distList(items, defaultField) {
+    if (!items.length) return '<div style="color:var(--text-dim);font-size:12px;">No data.</div>';
+    const max = Math.max(1, ...items.map(i => i.value));
+    return `<div class="dist-list">` + items.map(i => {
+      const f = i.filter || (defaultField ? { field: defaultField, value: i.label } : null);
+      const attrs = (f && i.value > 0)
+        ? ` data-filter-field="${escapeAttr(f.field)}" data-filter-value="${escapeAttr(String(f.value))}" data-filter-label="${escapeAttr(i.label)}"`
+        : '';
+      return `
+        <div class="dist-row"${attrs}>
+          <div class="lbl" title="${escapeAttr(i.label)}">${escapeHtml(i.label)}</div>
+          <div class="bar"><i style="width:${(i.value / max) * 100}%"></i></div>
+          <div class="cnt">${i.value}</div>
+        </div>`;
+    }).join('') + `</div>`;
+  }
+  function buildDimAvgRows(scope) {
+    const accs = scope.length ? scope : ACCOUNTS;
+    if (!accs.length) return '';
+    const dimSums = {}, dimMax = {}, dimLabel = {};
+    accs.forEach(a => {
+      Object.entries(a.fitPts).forEach(([k, p]) => {
+        dimSums[k] = (dimSums[k] || 0) + p.v;
+        dimMax[k]  = p.max;
+        dimLabel[k] = p.label;
+      });
+    });
+    return Object.keys(dimSums).map(k => ({
+      label: dimLabel[k],
+      avg: dimSums[k] / accs.length,
+      max: dimMax[k]
+    })).sort((a, b) => (b.avg / b.max) - (a.avg / a.max))
+      .map(d => `
+        <div class="dim-avg-row">
+          <div class="lbl">${escapeHtml(d.label)}</div>
+          <div class="bar"><i style="width:${(d.avg / d.max) * 100}%"></i></div>
+          <div class="v"><strong>${d.avg.toFixed(1)}</strong> / ${d.max}</div>
+        </div>`).join('');
+  }
+
+  // ── KPI tile drawer openers ──────────────────────────────────────────────
+  function openTotalKpiView() {
+    const revDist = REV_BUCKETS.map(b => ({
+      label: b.name,
+      value: ACCOUNTS.filter(a => a.revenueBand === b.name).length
+    }));
+    const indCounts = {};
+    ACCOUNTS.forEach(a => indCounts[a.industry] = (indCounts[a.industry] || 0) + 1);
+    const indDist = Object.entries(indCounts)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value).slice(0, 8);
+    const geoCounts = {};
+    ACCOUNTS.forEach(a => geoCounts[a.hqCountry] = (geoCounts[a.hqCountry] || 0) + 1);
+    const geoDist = Object.entries(geoCounts)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value).slice(0, 6);
+    const ownCounts = {};
+    ACCOUNTS.forEach(a => ownCounts[a.ownership] = (ownCounts[a.ownership] || 0) + 1);
+    const ownDist = Object.entries(ownCounts)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value);
+
+    openView({
+      title: `Total accounts · ${SUMMARY.total}`,
+      subtitle: 'Distribution across the enriched account book',
+      badges: '',
+      body: `
+        <div class="drawer-section">
+          <h4>Revenue band</h4>
+          ${distList(revDist, 'revenueBand')}
+        </div>
+        <div class="drawer-section">
+          <h4>Top industries</h4>
+          ${distList(indDist, 'industry')}
+        </div>
+        <div class="drawer-section">
+          <h4>HQ country</h4>
+          ${distList(geoDist, 'hqCountry')}
+        </div>
+        <div class="drawer-section">
+          <h4>Ownership type</h4>
+          ${distList(ownDist, 'ownership')}
+        </div>
+      `,
+      scope: ACCOUNTS
+    });
+  }
+
+  function openAvgFitView() {
+    const bins = Array.from({ length: 10 }, (_, i) => ({
+      label: `${i * 10}–${i * 10 + 9}`,
+      value: 0,
+      filter: { field: 'fitScoreBin', value: i }
+    }));
+    ACCOUNTS.forEach(a => {
+      const b = Math.min(9, Math.floor(a.fitScore / 10));
+      bins[b].value++;
+    });
+    const sorted = ACCOUNTS.slice().sort((a, b) => b.fitScore - a.fitScore);
+    const top5 = sorted.slice(0, 5);
+    const bot5 = sorted.slice(-5).reverse();
+
+    openView({
+      title: `Avg fit score · ${SUMMARY.avgFit}/100`,
+      subtitle: 'Distribution and dimensional breakdown across the book',
+      badges: '',
+      body: `
+        <div class="drawer-section">
+          <h4>Score distribution · count per 10-pt bin</h4>
+          ${distList(bins)}
+        </div>
+        <div class="drawer-section">
+          <h4>Average points by dimension (% of cap)</h4>
+          ${buildDimAvgRows(ACCOUNTS)}
+        </div>
+        <div class="drawer-section">
+          <h4>Top 5 highest fit</h4>
+          ${top5.map(accountRow).join('')}
+        </div>
+        <div class="drawer-section">
+          <h4>Bottom 5 lowest fit</h4>
+          ${bot5.map(accountRow).join('')}
+        </div>
+      `,
+      scope: ACCOUNTS
+    });
+  }
+
+  function openATierView() {
+    const accs = ACCOUNTS.filter(a => a.fitTier === 'A').sort((a, b) => b.fitScore - a.fitScore);
+    const intentSplit = ['Hot', 'Warm', 'Cold'].map(b => ({
+      label: b,
+      value: accs.filter(a => a.intentBand === b).length
+    }));
+    const indCounts = {};
+    accs.forEach(a => indCounts[a.industry] = (indCounts[a.industry] || 0) + 1);
+    const indList = Object.entries(indCounts)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value);
+    const revSplit = REV_BUCKETS.map(b => ({
+      label: b.name,
+      value: accs.filter(a => a.revenueBand === b.name).length
+    }));
+
+    openView({
+      title: `Tier A accounts · ${accs.length}`,
+      subtitle: `${SUMMARY.aPct}% of book · Fit Score ≥ 80`,
+      badges: `<span class="tier-badge tier-A">A · top fit</span>`,
+      body: `
+        <div class="drawer-section"><h4>Intent split</h4>${distList(intentSplit, 'intentBand')}</div>
+        <div class="drawer-section"><h4>Industries</h4>${distList(indList, 'industry')}</div>
+        <div class="drawer-section"><h4>Revenue band</h4>${distList(revSplit, 'revenueBand')}</div>
+        <div class="drawer-section">
+          <h4>Accounts · ${accs.length}</h4>
+          ${accs.map(accountRow).join('')}
+        </div>
+      `,
+      scope: accs
+    });
+  }
+
+  function openHotIntentView() {
+    const hot = ACCOUNTS.filter(a => a.intentBand === 'Hot').sort((a, b) => b.intentScore - a.intentScore);
+    const fitSplit = ['A', 'B', 'C', 'D'].map(t => ({
+      label: 'Fit ' + t,
+      value: hot.filter(a => a.fitTier === t).length,
+      filter: { field: 'fitTier', value: t }
+    }));
+    const stageSplit = ['Awareness', 'Consideration', 'Decision', 'Purchase'].map(s => ({
+      label: s,
+      value: hot.filter(a => a.buyingStage === s).length
+    }));
+    const kwCount = {};
+    hot.forEach(a => a.intentKeywords.forEach(k => kwCount[k] = (kwCount[k] || 0) + 1));
+    const topKeywords = Object.entries(kwCount)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value).slice(0, 10);
+
+    openView({
+      title: `Hot intent · ${hot.length}`,
+      subtitle: `${SUMMARY.hotPct}% of book · Intent ≥ 70 · actively researching`,
+      badges: `<span class="intent-chip intent-Hot"><span class="heat-dot"></span>Hot</span>`,
+      body: `
+        <div class="drawer-section"><h4>Fit tier within Hot</h4>${distList(fitSplit)}</div>
+        <div class="drawer-section"><h4>Buying stage</h4>${distList(stageSplit, 'buyingStage')}</div>
+        <div class="drawer-section"><h4>Top intent keywords across Hot</h4>${distList(topKeywords, 'intentKeyword')}</div>
+        <div class="drawer-section">
+          <h4>Hot accounts · ${hot.length}</h4>
+          ${hot.map(accountRow).join('')}
+        </div>
+      `,
+      scope: hot
+    });
+  }
+
+  function openPrimeSegmentView() {
+    const prime = ACCOUNTS.filter(a => a.fitTier === 'A' && a.intentBand === 'Hot')
+      .sort((a, b) => (b.fitScore + b.intentScore) - (a.fitScore + a.intentScore));
+
+    openView({
+      title: `A + Hot · ${prime.length}`,
+      subtitle: 'The call-first segment — ideal fit AND actively shopping',
+      badges:
+        `<span class="tier-badge tier-A">Fit A</span>
+         <span class="intent-chip intent-Hot"><span class="heat-dot"></span>Hot</span>`,
+      body: prime.length === 0
+        ? `<div class="drawer-section"><p style="color:var(--text-muted);font-size:13px;">No accounts currently sit at A + Hot. Tune your targeting or wait for new intent signals.</p></div>`
+        : `
+          <div class="drawer-section">
+            <div class="rec-pill">
+              <span class="rec-emoji">🎯</span>
+              <div>Outreach priority: <strong>highest</strong>. These accounts match your ICP AND are actively researching. Move them to direct sales outreach this week.</div>
+            </div>
+          </div>
+          <div class="drawer-section">
+            <h4>The call-first list · sorted by combined score</h4>
+            ${prime.map(accountRow).join('')}
+          </div>
+        `
+    });
+  }
+
+  // ── Matrix cell drawer ───────────────────────────────────────────────────
+  const MATRIX_RECOMMENDATIONS = {
+    'A-Hot':  { emoji: '🎯', text: 'Highest priority — strong fit AND active intent. Call first.' },
+    'A-Warm': { emoji: '📞', text: 'High-value nurture — fit is strong, intent is building. Touch within 7 days.' },
+    'A-Cold': { emoji: '✉️',  text: 'Top-of-funnel — perfect ICP, no signals yet. Build brand awareness and stay close.' },
+    'B-Hot':  { emoji: '🔥', text: 'Active opportunity — good fit, strong intent. Move to direct outreach.' },
+    'B-Warm': { emoji: '📈', text: 'Solid pipeline — keep nurturing, intent is building.' },
+    'B-Cold': { emoji: '📚', text: 'Long-tail — fit is acceptable, no active research. Marketing-led.' },
+    'C-Hot':  { emoji: '🤔', text: 'Mixed signal — they\'re shopping but fit is weak. Qualify hard before investing.' },
+    'C-Warm': { emoji: '⚖️',  text: 'Watch list — marginal fit, some interest. Low-effort nurture.' },
+    'C-Cold': { emoji: '🌱', text: 'Low priority — minimal fit, no signals. Sales should deprioritize.' },
+    'D-Hot':  { emoji: '⚠️',  text: 'Caution — high interest but poor fit. Likely churn risk if closed.' },
+    'D-Warm': { emoji: '⏸️',  text: 'Skip — wrong shape, weak signals.' },
+    'D-Cold': { emoji: '❌', text: 'Deprioritize — neither fit nor intent. Remove from active list.' }
+  };
+  function openMatrixCellView(tier, band) {
+    const accs = ACCOUNTS.filter(a => a.fitTier === tier && a.intentBand === band)
+      .sort((a, b) => (b.fitScore + b.intentScore) - (a.fitScore + a.intentScore));
+    const rec = MATRIX_RECOMMENDATIONS[`${tier}-${band}`];
+    const pctOfBook = SUMMARY.total ? Math.round(accs.length / SUMMARY.total * 100) : 0;
+
+    openView({
+      title: `Tier ${tier} · ${band} intent`,
+      subtitle: `${accs.length} account${accs.length === 1 ? '' : 's'} · ${pctOfBook}% of book`,
+      badges:
+        `<span class="tier-badge tier-${tier}">Fit ${tier}</span>
+         <span class="intent-chip intent-${band}"><span class="heat-dot"></span>${band}</span>`,
+      body: `
+        ${rec ? `<div class="drawer-section"><div class="rec-pill"><span class="rec-emoji">${rec.emoji}</span><div>${rec.text}</div></div></div>` : ''}
+        <div class="drawer-section">
+          <h4>Accounts in this cell · ${accs.length}</h4>
+          ${accs.length === 0
+            ? '<div style="color:var(--text-dim);font-size:13px;padding:8px 0;">No accounts in this cell currently.</div>'
+            : accs.map(accountRow).join('')}
+        </div>
+      `
+    });
+  }
+
+  // ── Filtered list view (drill-down from any dist-row) ────────────────────
+  function openFilteredListView({ scope, field, value, label, parentTitle }) {
+    let filtered;
+    if (field === 'intentKeyword') {
+      filtered = scope.filter(a => a.intentKeywords && a.intentKeywords.includes(value));
+    } else if (field === 'fitScoreBin') {
+      const bin = Number(value);
+      filtered = scope.filter(a => Math.floor(a.fitScore / 10) === bin);
+    } else {
+      filtered = scope.filter(a => String(a[field]) === String(value));
+    }
+    filtered = filtered.slice().sort((a, b) => (b.fitScore + b.intentScore) - (a.fitScore + a.intentScore));
+
+    let summary = '';
+    if (filtered.length > 0) {
+      const avgFit    = Math.round(filtered.reduce((s, a) => s + a.fitScore,    0) / filtered.length);
+      const avgIntent = Math.round(filtered.reduce((s, a) => s + a.intentScore, 0) / filtered.length);
+      const aCount    = filtered.filter(a => a.fitTier    === 'A').length;
+      const hotCount  = filtered.filter(a => a.intentBand === 'Hot').length;
+      summary = `
+        <div class="drawer-section">
+          <h4>Slice summary</h4>
+          <div class="firmo-grid">
+            <div class="firmo-row"><div class="lbl">Avg fit</div><div class="val">${avgFit}/100</div></div>
+            <div class="firmo-row"><div class="lbl">Avg intent</div><div class="val">${avgIntent}/100</div></div>
+            <div class="firmo-row"><div class="lbl">A-tier</div><div class="val">${aCount}</div></div>
+            <div class="firmo-row"><div class="lbl">Hot intent</div><div class="val">${hotCount}</div></div>
+          </div>
+        </div>`;
+    }
+
+    openView({
+      title: label || String(value),
+      subtitle: parentTitle
+        ? `${filtered.length} account${filtered.length === 1 ? '' : 's'} · within ${parentTitle}`
+        : `${filtered.length} account${filtered.length === 1 ? '' : 's'}`,
+      badges: '',
+      body: filtered.length === 0
+        ? '<div class="drawer-section"><p style="color:var(--text-dim);font-size:13px;">No accounts match this filter.</p></div>'
+        : summary + `<div class="drawer-section"><h4>Accounts · ${filtered.length}</h4>${filtered.map(accountRow).join('')}</div>`,
+      scope: filtered
+    });
+  }
+
+  // ── Industry drawer ──────────────────────────────────────────────────────
+  function openIndustryView(industry) {
+    const accs = ACCOUNTS.filter(a => a.industry === industry)
+      .sort((a, b) => b.fitScore - a.fitScore);
+    if (!accs.length) return;
+
+    const subCounts = {};
+    accs.forEach(a => subCounts[a.subIndustry] = (subCounts[a.subIndustry] || 0) + 1);
+    const subDist = Object.entries(subCounts)
+      .map(([k, v]) => ({ label: k, value: v }))
+      .sort((a, b) => b.value - a.value);
+    const tierSplit = ['A', 'B', 'C', 'D'].map(t => ({
+      label: 'Tier ' + t,
+      value: accs.filter(a => a.fitTier === t).length,
+      filter: { field: 'fitTier', value: t }
+    }));
+    const intentSplit = ['Hot', 'Warm', 'Cold'].map(b => ({
+      label: b,
+      value: accs.filter(a => a.intentBand === b).length
+    }));
+    const avgFit = Math.round(accs.reduce((s, a) => s + a.fitScore, 0) / accs.length);
+    const avgIntent = Math.round(accs.reduce((s, a) => s + a.intentScore, 0) / accs.length);
+
+    openView({
+      title: industry,
+      subtitle: `${accs.length} account${accs.length === 1 ? '' : 's'} · avg fit ${avgFit} · avg intent ${avgIntent}`,
+      badges: '',
+      body: `
+        <div class="drawer-section"><h4>Sub-industries</h4>${distList(subDist, 'subIndustry')}</div>
+        <div class="drawer-section"><h4>Fit tier mix</h4>${distList(tierSplit)}</div>
+        <div class="drawer-section"><h4>Intent mix</h4>${distList(intentSplit, 'intentBand')}</div>
+        <div class="drawer-section">
+          <h4>Average points by dimension (% of cap)</h4>
+          ${buildDimAvgRows(accs)}
+        </div>
+        <div class="drawer-section">
+          <h4>Accounts in ${escapeHtml(industry)} · ${accs.length}</h4>
+          ${accs.map(accountRow).join('')}
+        </div>
+      `,
+      scope: accs
+    });
+  }
+
+  function drawerBody(a) {
+    const yoy = v => {
+      const sign = v > 0 ? '+' : '';
+      const cls = v > 1 ? 'up' : v < -1 ? 'down' : 'flat';
+      return `<span class="delta ${cls}">${sign}${v}% YoY</span>`;
+    };
+
+    const fitRows = Object.values(a.fitPts).map(p => `
+      <div class="breakdown-row fit">
+        <div class="dim">${p.label}<span class="info-i" data-info-text="${escapeAttr(p.src)}"></span></div>
+        <div class="bar"><i style="width:${(p.v / p.max) * 100}%"></i></div>
+        <div class="pts">${p.v}<span class="max"> / ${p.max}</span></div>
+      </div>
+    `).join('');
+
+    const intentRows = Object.values(a.intentPts).map(p => `
+      <div class="breakdown-row intent">
+        <div class="dim">${p.label}<span class="info-i" data-info-text="${escapeAttr(p.src)}"></span></div>
+        <div class="bar"><i style="width:${(p.v / p.max) * 100}%"></i></div>
+        <div class="pts">${p.v}<span class="max"> / ${p.max}</span></div>
+      </div>
+    `).join('');
+
+    const techChipsHtml = a.techStack.map(t =>
+      `<span class="tech-chip${ICP.targetTech.includes(t) ? ' match' : ''}">${escapeHtml(t)}</span>`
+    ).join('');
+
+    const kwChipsHtml = a.intentKeywords.map(k => `<span class="kw-chip">${escapeHtml(k)}</span>`).join('');
+
+    const changesHtml = a.recentTechChanges.length
+      ? a.recentTechChanges.map(c =>
+          `<div class="change-item">• <strong>${c.action}</strong> · ${escapeHtml(c.tech)} <span style="color:var(--text-dim)">— ${c.monthsAgo}mo ago</span></div>`
+        ).join('')
+      : `<div class="change-item" style="color:var(--text-dim)">No recent stack changes detected</div>`;
+
+    const fundingHtml = a.fundingRecent
+      ? `<strong>$${a.fundingAmountM}M</strong> · ${a.fundingMonthsAgo}mo ago`
+      : `<span style="color:var(--text-dim)">No recent funding</span>`;
+
+    return `
+      <div class="drawer-section">
+        <h4>Firmographic snapshot</h4>
+        <div class="firmo-grid">
+          <div class="firmo-row"><div class="lbl">Revenue</div><div class="val">$${formatMillions(a.revenue)} ${yoy(a.revenueYoY)}</div></div>
+          <div class="firmo-row"><div class="lbl">Employees</div><div class="val">${formatNumber(a.employees)} ${yoy(a.employeesYoY)}</div></div>
+          <div class="firmo-row"><div class="lbl">Revenue band</div><div class="val">${a.revenueBand}</div></div>
+          <div class="firmo-row"><div class="lbl">Tech spend</div><div class="val">${a.techSpendBand}</div></div>
+          <div class="firmo-row"><div class="lbl">Founded</div><div class="val">${a.yearFounded}</div></div>
+          <div class="firmo-row"><div class="lbl">Ownership</div><div class="val">${a.ownership}</div></div>
+          <div class="firmo-row"><div class="lbl">HQ</div><div class="val">${a.hqCountry}${a.hqState ? ', ' + a.hqState : ''}</div></div>
+          <div class="firmo-row"><div class="lbl">Locations</div><div class="val">${a.numLocations}${a.isMultinational ? ' · multinational' : ''}</div></div>
+          <div class="firmo-row"><div class="lbl">D-U-N-S</div><div class="val">${a.duns}</div></div>
+          <div class="firmo-row"><div class="lbl">SIC code</div><div class="val">${a.sicCode}</div></div>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>4-quarter growth trend</h4>
+        <div class="spark-row">
+          <span class="label">Employees</span>
+          <svg id="spark-emp-${a.id}"></svg>
+          <span class="yoy" style="color:${a.employeesYoY >= 0 ? '#6dffb0' : '#ff7e8b'}">
+            ${a.employeesYoY > 0 ? '+' : ''}${a.employeesYoY}%
+          </span>
+        </div>
+        <div class="spark-row">
+          <span class="label">Revenue (Q)</span>
+          <svg id="spark-rev-${a.id}"></svg>
+          <span class="yoy" style="color:${a.revenueYoY >= 0 ? '#6dffb0' : '#ff7e8b'}">
+            ${a.revenueYoY > 0 ? '+' : ''}${a.revenueYoY}%
+          </span>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Financial health · D&amp;B Hoovers</h4>
+        <div class="firmo-grid">
+          <div class="firmo-row"><div class="lbl">Credit score</div><div class="val">${a.dnbCreditScore} / 100</div></div>
+          <div class="firmo-row"><div class="lbl">Risk rating</div><div class="val">${a.dnbRiskRating} of 9 <span style="color:var(--text-dim);font-size:11px;">(1 = best)</span></div></div>
+          <div class="firmo-row"><div class="lbl">Financial stress</div><div class="val">${a.financialStress}</div></div>
+          <div class="firmo-row"><div class="lbl">EBITDA margin</div><div class="val">${a.ebitdaMargin}%</div></div>
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Fit Score breakdown · ${a.fitScore}/100 → Tier ${a.fitTier}</h4>
+        ${fitRows}
+      </div>
+
+      <div class="drawer-section">
+        <h4>Intent Score breakdown · ${a.intentScore}/100 → ${a.intentBand}</h4>
+        ${intentRows}
+        <div style="margin-top:14px;color:var(--text-muted);font-size:12px;">
+          Buying stage: <strong style="color:var(--text)">${a.buyingStage}</strong> ·
+          Funding: ${fundingHtml} ·
+          Hiring: <strong style="color:var(--text)">${a.hiringPostings}</strong> postings ·
+          Leadership changes: <strong style="color:var(--text)">${a.leadershipChangesRecent}</strong> in 90d
+        </div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Active intent keywords · 6sense</h4>
+        <div class="keyword-chips">${kwChipsHtml}</div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Installed tech stack · HG Insights <span style="color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0;">(highlighted = target match)</span></h4>
+        <div>${techChipsHtml}</div>
+      </div>
+
+      <div class="drawer-section">
+        <h4>Recent tech changes · HG Insights</h4>
+        ${changesHtml}
+      </div>
+
+      <div class="drawer-section">
+        <h4>Decision-maker depth · ZoomInfo</h4>
+        <div class="firmo-grid">
+          <div class="firmo-row"><div class="lbl">Target-function execs</div><div class="val">${a.execCountTarget}</div></div>
+          <div class="firmo-row"><div class="lbl">Recent exec hires (90d)</div><div class="val">${a.recentExecHires}</div></div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Sparkline component (mini D3 line) ───────────────────────────────────
+  function renderSparkline(id, values, color) {
+    const svg = d3.select('#' + id);
+    if (svg.empty() || !values || values.length === 0) return;
+    const node = svg.node();
+    const w = node.clientWidth || 130;
+    const h = node.clientHeight || 32;
+    svg.attr('viewBox', `0 0 ${w} ${h}`);
+    svg.selectAll('*').remove();
+
+    const pad = 4;
+    const x = d3.scaleLinear().domain([0, values.length - 1]).range([pad, w - pad]);
+    const yExt = d3.extent(values);
+    const yRange = (yExt[1] - yExt[0]) || 1;
+    const y = d3.scaleLinear().domain([yExt[0] - yRange * 0.15, yExt[1] + yRange * 0.15]).range([h - pad, pad]);
+
+    const line = d3.line().x((d, i) => x(i)).y(d => y(d)).curve(d3.curveMonotoneX);
+    const area = d3.area().x((d, i) => x(i)).y0(h - pad).y1(d => y(d)).curve(d3.curveMonotoneX);
+
+    const gradId = id + '-grad';
+    const defs = svg.append('defs');
+    const grad = defs.append('linearGradient').attr('id', gradId).attr('x1', 0).attr('x2', 0).attr('y1', 0).attr('y2', 1);
+    grad.append('stop').attr('offset', '0%').attr('stop-color', color).attr('stop-opacity', 0.35);
+    grad.append('stop').attr('offset', '100%').attr('stop-color', color).attr('stop-opacity', 0);
+
+    svg.append('path').attr('d', area(values)).attr('fill', `url(#${gradId})`);
+    const path = svg.append('path').attr('d', line(values)).attr('fill', 'none')
+      .attr('stroke', color).attr('stroke-width', 1.6).attr('stroke-linecap', 'round');
+
+    // animate stroke
+    const len = path.node().getTotalLength();
+    path.attr('stroke-dasharray', len)
+      .attr('stroke-dashoffset', len)
+      .transition().duration(700).ease(d3.easeCubicOut)
+      .attr('stroke-dashoffset', 0);
+
+    svg.selectAll('circle').data(values).enter().append('circle')
+      .attr('cx', (d, i) => x(i)).attr('cy', d => y(d))
+      .attr('r', 0).attr('fill', color)
+      .transition().delay((d, i) => 400 + i * 80).duration(300)
+      .attr('r', (d, i) => i === values.length - 1 ? 2.4 : 1.5);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // HELPERS
+  // ════════════════════════════════════════════════════════════════════════
+
+  function formatNumber(n) { return (Number(n) || 0).toLocaleString(); }
+  function formatMillions(n) {
+    n = Number(n) || 0;
+    if (n >= 1e9) return (n / 1e9).toFixed(1) + 'B';
+    return Math.round(n / 1e6) + 'M';
+  }
+  function escapeHtml(s) {
+    return String(s ?? '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+  function escapeAttr(s) {
+    return escapeHtml(s);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // EVENTS
+  // ════════════════════════════════════════════════════════════════════════
+
+  function bindEvents() {
+    document.getElementById('tableSearch').addEventListener('input', e => {
+      STATE.search = e.target.value.toLowerCase();
+      renderTable();
+    });
+    document.getElementById('tierFilter').addEventListener('change', e => {
+      STATE.tierFilter = e.target.value;
+      renderTable();
+    });
+    document.getElementById('intentFilter').addEventListener('change', e => {
+      STATE.intentFilter = e.target.value;
+      renderTable();
+    });
+
+    document.querySelectorAll('#accountsTable thead th').forEach(th => {
+      th.addEventListener('click', () => {
+        const key = th.dataset.sort;
+        if (!key) return;
+        if (STATE.sortKey === key) {
+          STATE.sortDir = STATE.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          STATE.sortKey = key;
+          STATE.sortDir = (['company', 'industry', 'fitTier', 'intentBand'].includes(key)) ? 'asc' : 'desc';
+        }
+        renderTable();
+      });
+    });
+
+    // tooltip motion
+    document.addEventListener('mousemove', e => {
+      if (tooltip.classList.contains('show')) moveTooltip(e);
+    });
+
+    // info popovers (delegated; covers both fixed and drawer-added ones)
+    document.addEventListener('mouseover', e => {
+      const t = e.target.closest('.info-i');
+      if (!t) return;
+      if (t.dataset.info) showPopover(t);
+      else if (t.dataset.infoText) {
+        const r = t.getBoundingClientRect();
+        popoverEl.innerHTML = `<div>${escapeHtml(t.dataset.infoText)}</div>`;
+        const tw = 220;
+        let x = r.right + 10;
+        if (x + tw > window.innerWidth - 8) x = r.left - tw - 10;
+        popoverEl.style.left = Math.max(8, x) + 'px';
+        popoverEl.style.top = Math.max(8, r.top - 4) + 'px';
+        popoverEl.classList.add('show');
+      }
+    });
+    document.addEventListener('mouseout', e => {
+      const t = e.target.closest('.info-i');
+      if (t) hidePopover();
+    });
+
+    // mouse-tracking glow on cards
+    document.querySelectorAll('.kpi, .card').forEach(card => {
+      card.addEventListener('mousemove', e => {
+        const r = card.getBoundingClientRect();
+        card.style.setProperty('--mx', (e.clientX - r.left) + 'px');
+        card.style.setProperty('--my', (e.clientY - r.top)  + 'px');
+      });
+    });
+
+    // methodology toggle
+    document.getElementById('methodologyToggle').addEventListener('click', () => {
+      document.getElementById('methodology').classList.toggle('open');
+      if (typeof ScrollTrigger !== 'undefined') setTimeout(() => ScrollTrigger.refresh(), 480);
+    });
+
+    // methodology tabs
+    document.querySelectorAll('.meth-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const target = tab.dataset.tab;
+        document.querySelectorAll('.meth-tab').forEach(t => t.classList.toggle('active', t === tab));
+        document.querySelectorAll('[data-panel]').forEach(p => {
+          p.hidden = (p.dataset.panel !== target);
+        });
+        if (typeof ScrollTrigger !== 'undefined') setTimeout(() => ScrollTrigger.refresh(), 60);
+      });
+    });
+
+    // drawer
+    document.getElementById('drClose').addEventListener('click', closeDrawer);
+    document.getElementById('drawerBackdrop').addEventListener('click', closeDrawer);
+    document.getElementById('drBack').addEventListener('click', popDrawerView);
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && drawer.classList.contains('open')) closeDrawer();
+    });
+
+    // KPI tile clicks → open the relevant drawer
+    document.querySelectorAll('.kpi[data-kpi]').forEach(tile => {
+      tile.addEventListener('click', e => {
+        if (e.target.closest('.info-i')) return; // info icons are hover-only
+        const map = {
+          total: openTotalKpiView,
+          avg:   openAvgFitView,
+          atier: openATierView,
+          hot:   openHotIntentView,
+          prime: openPrimeSegmentView
+        };
+        const fn = map[tile.dataset.kpi];
+        if (fn) fn();
+      });
+    });
+
+    // Drawer body: account row click drills into the account view;
+    // dist-row click drills into a filtered slice
+    document.getElementById('drBody').addEventListener('click', e => {
+      const row = e.target.closest('.acct-row[data-account-id]');
+      if (row) { openAccountView(row.dataset.accountId); return; }
+      const dist = e.target.closest('.dist-row[data-filter-field]');
+      if (dist) {
+        const parent = drawerStack[drawerStack.length - 1];
+        const scope = (parent && parent.scope) ? parent.scope : ACCOUNTS;
+        openFilteredListView({
+          scope,
+          field: dist.dataset.filterField,
+          value: dist.dataset.filterValue,
+          label: dist.dataset.filterLabel,
+          parentTitle: parent ? parent.title : null
+        });
+      }
+    });
+
+    // resize re-render
+    let resizeTimer;
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(() => {
+        renderMatrix();
+        renderIndustryChart();
+        renderQuadrantChart();
+      }, 180);
+    });
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // SMOOTH SCROLL
+  // ════════════════════════════════════════════════════════════════════════
+
+  function initSmoothScroll() {
+    if (typeof Lenis === 'undefined') return;
+    const lenis = new Lenis({ duration: 1.1, smoothWheel: true });
+    if (typeof ScrollTrigger !== 'undefined') {
+      lenis.on('scroll', ScrollTrigger.update);
+      gsap.ticker.add(time => lenis.raf(time * 1000));
+      gsap.ticker.lagSmoothing(0);
+    } else {
+      function raf(t) { lenis.raf(t); requestAnimationFrame(raf); }
+      requestAnimationFrame(raf);
+    }
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // ANIMATIONS
+  // ════════════════════════════════════════════════════════════════════════
+
+  function runAnimations() {
+    if (typeof gsap === 'undefined') return;
+    if (typeof ScrollTrigger !== 'undefined') gsap.registerPlugin(ScrollTrigger);
+
+    gsap.from('.topbar .logo-dot', { scale: 0, rotate: -90, duration: 0.7, ease: 'back.out(1.6)' });
+    gsap.from('.topbar h1',         { y: -12, opacity: 0, duration: 0.7, delay: 0.05, ease: 'power3.out' });
+    gsap.from('.data-sources .source-chip', { x: 12, opacity: 0, duration: 0.5, delay: 0.25, stagger: 0.06, ease: 'power3.out' });
+
+    document.querySelectorAll('[data-count]').forEach(el => {
+      const target = Number(el.dataset.count) || 0;
+      const obj = { v: 0 };
+      gsap.to(obj, {
+        v: target, duration: 1.6, delay: 0.35, ease: 'power2.out',
+        onUpdate: () => { el.textContent = Math.round(obj.v); }
+      });
+    });
+
+    gsap.utils.toArray('[data-reveal]').forEach((el, i) => {
+      gsap.from(el, {
+        y: 24, opacity: 0, duration: 0.85,
+        delay: 0.15 + i * 0.06, ease: 'power3.out',
+        scrollTrigger: typeof ScrollTrigger !== 'undefined' ? {
+          trigger: el, start: 'top 90%', toggleActions: 'play none none none'
+        } : undefined
+      });
+    });
+
+    if (typeof ScrollTrigger !== 'undefined') setTimeout(() => ScrollTrigger.refresh(), 600);
+  }
+
+  // ════════════════════════════════════════════════════════════════════════
+  // BOOT
+  // ════════════════════════════════════════════════════════════════════════
+
+  function boot() {
+    renderKpis();
+    renderTable();
+    requestAnimationFrame(() => {
+      renderMatrix();
+      renderIndustryChart();
+      renderQuadrantChart();
+      bindEvents();
+      runAnimations();
+      initSmoothScroll();
+      setTimeout(() => document.getElementById('loader').classList.add('hidden'), 250);
+    });
+  }
+  document.addEventListener('DOMContentLoaded', boot);
+  </script>
+</body>
+</html>
